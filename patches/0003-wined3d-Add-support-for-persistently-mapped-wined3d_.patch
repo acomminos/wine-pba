@@ -1,4 +1,4 @@
-From f908599c724cd1d27dfbcf4873d5a22be5992bca Mon Sep 17 00:00:00 2001
+From 5ed770d68606fd20225c2a5064d3902e1af28798 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Fri, 23 Feb 2018 17:41:43 -0800
 Subject: [PATCH 3/3] wined3d: Add support for persistently mapped
@@ -6,6 +6,7 @@ Subject: [PATCH 3/3] wined3d: Add support for persistently mapped
 
 ---
  dlls/wined3d/buffer.c          | 211 ++++++++++++++++++++++++++++++++++++++++-
+ dlls/wined3d/buffer_heap.c     |   8 +-
  dlls/wined3d/cs.c              |  62 +++++++++++-
  dlls/wined3d/drawprim.c        |   7 +-
  dlls/wined3d/query.c           |   2 +-
@@ -14,10 +15,10 @@ Subject: [PATCH 3/3] wined3d: Add support for persistently mapped
  dlls/wined3d/texture.c         |  13 +++
  dlls/wined3d/utils.c           |   1 +
  dlls/wined3d/wined3d_private.h |  13 +++
- 9 files changed, 324 insertions(+), 11 deletions(-)
+ 10 files changed, 326 insertions(+), 17 deletions(-)
 
 diff --git a/dlls/wined3d/buffer.c b/dlls/wined3d/buffer.c
-index d61321e1a5..4fd1b16128 100644
+index d61321e1a5..ccb090c907 100644
 --- a/dlls/wined3d/buffer.c
 +++ b/dlls/wined3d/buffer.c
 @@ -28,12 +28,14 @@
@@ -49,12 +50,12 @@ index d61321e1a5..4fd1b16128 100644
 +
 +    if (buffer->resource.usage & WINED3DUSAGE_WRITEONLY)
 +    {
-+        heap = device->write_buffer_heap;
++        heap = device->wo_buffer_heap;
 +    }
 +    else
 +    {
 +        FIXME("Using write-only heap for a persistent buffer without WINED3DUSAGE_WRITEONLY.\n");
-+        heap = device->write_buffer_heap;
++        heap = device->rw_buffer_heap;
 +    }
 +
 +    buffer->buffer_heap = heap;
@@ -351,6 +352,43 @@ index d61321e1a5..4fd1b16128 100644
      {
          TRACE("Not creating a BO because GL_ARB_vertex_buffer is not supported.\n");
      }
+diff --git a/dlls/wined3d/buffer_heap.c b/dlls/wined3d/buffer_heap.c
+index 900e2d24bb..f24fddffb4 100644
+--- a/dlls/wined3d/buffer_heap.c
++++ b/dlls/wined3d/buffer_heap.c
+@@ -114,14 +114,11 @@ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr s
+     {
+         access_flags |= GL_MAP_READ_BIT;
+     }
+-    storage_flags = access_flags; // XXX(acomminos): will we need dynamic storage?
++    storage_flags = access_flags;
+ 
+     // TODO(acomminos): where should we be checking for errors here?
+-
+-    // TODO(acomminos): assert from CS thread?
+     GL_EXTCALL(glGenBuffers(1, &object->buffer_object));
+ 
+-    // XXX(acomminos): use glNamedBufferStorage?
+     context_bind_bo(context, buffer_target, object->buffer_object);
+ 
+     // TODO(acomminos): assert glBufferStorage supported?
+@@ -129,7 +126,6 @@ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr s
+ 
+     if (!(object->map_ptr = GL_EXTCALL(glMapBufferRange(buffer_target, 0, size, access_flags))))
+     {
+-        // TODO(acomminos): include error message
+         ERR("Couldn't map persistent buffer.\n");
+         return -1; // FIXME(acomminos): proper error code, cleanup
+     }
+@@ -147,7 +143,7 @@ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr s
+ /* Context activation is done by the caller. */
+ HRESULT wined3d_buffer_heap_destroy(struct wined3d_buffer_heap *heap, struct wined3d_context *context)
+ {
+-    // TODO
++    FIXME("Unimplemented, leaking buffer");
+     return WINED3D_OK;
+ }
+ 
 diff --git a/dlls/wined3d/cs.c b/dlls/wined3d/cs.c
 index 7e72b30933..edcf521b72 100644
 --- a/dlls/wined3d/cs.c
@@ -604,7 +642,7 @@ index ee519d2b32..25626749fa 100644
      if (location) FIXME("Unrecognized location flag(s) %#x.\n", location);
  
 diff --git a/dlls/wined3d/wined3d_private.h b/dlls/wined3d/wined3d_private.h
-index 6d5f081063..b949c2e07c 100644
+index f899ae867f..318a15c552 100644
 --- a/dlls/wined3d/wined3d_private.h
 +++ b/dlls/wined3d/wined3d_private.h
 @@ -1701,6 +1701,9 @@ void wined3d_fence_destroy(struct wined3d_fence *fence) DECLSPEC_HIDDEN;
