@@ -1,7 +1,7 @@
-From 5ed770d68606fd20225c2a5064d3902e1af28798 Mon Sep 17 00:00:00 2001
+From 3e72163af5712be1a51957effa183edc7a9fb2a6 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Fri, 23 Feb 2018 17:41:43 -0800
-Subject: [PATCH 3/3] wined3d: Add support for persistently mapped
+Subject: [PATCH 3/4] wined3d: Add support for persistently mapped
  wined3d_buffer resources.
 
 ---
@@ -642,7 +642,7 @@ index ee519d2b32..25626749fa 100644
      if (location) FIXME("Unrecognized location flag(s) %#x.\n", location);
  
 diff --git a/dlls/wined3d/wined3d_private.h b/dlls/wined3d/wined3d_private.h
-index f899ae867f..318a15c552 100644
+index 96bda81eb9..d049d57206 100644
 --- a/dlls/wined3d/wined3d_private.h
 +++ b/dlls/wined3d/wined3d_private.h
 @@ -1701,6 +1701,9 @@ void wined3d_fence_destroy(struct wined3d_fence *fence) DECLSPEC_HIDDEN;
@@ -655,7 +655,7 @@ index f899ae867f..318a15c552 100644
  
  /* Direct3D terminology with little modifications. We do not have an issued
   * state because only the driver knows about it, but we have a created state
-@@ -3010,9 +3013,12 @@ struct wined3d_resource_ops
+@@ -3009,9 +3012,12 @@ struct wined3d_resource_ops
      void (*resource_unload)(struct wined3d_resource *resource);
      HRESULT (*resource_sub_resource_map)(struct wined3d_resource *resource, unsigned int sub_resource_idx,
              struct wined3d_map_desc *map_desc, const struct wined3d_box *box, DWORD flags);
@@ -668,7 +668,7 @@ index f899ae867f..318a15c552 100644
  };
  
  struct wined3d_resource
-@@ -3267,6 +3273,7 @@ void wined3d_texture_validate_location(struct wined3d_texture *texture,
+@@ -3266,6 +3272,7 @@ void wined3d_texture_validate_location(struct wined3d_texture *texture,
  #define WINED3D_LOCATION_DRAWABLE       0x00000040
  #define WINED3D_LOCATION_RB_MULTISAMPLE 0x00000080
  #define WINED3D_LOCATION_RB_RESOLVED    0x00000100
@@ -676,7 +676,7 @@ index f899ae867f..318a15c552 100644
  
  const char *wined3d_debug_location(DWORD location) DECLSPEC_HIDDEN;
  
-@@ -3623,6 +3630,7 @@ void wined3d_cs_emit_copy_sub_resource(struct wined3d_cs *cs, struct wined3d_res
+@@ -3622,6 +3629,7 @@ void wined3d_cs_emit_copy_sub_resource(struct wined3d_cs *cs, struct wined3d_res
          unsigned int dst_sub_resource_idx, const struct wined3d_box *dst_box, struct wined3d_resource *src_resource,
          unsigned int src_sub_resource_idx, const struct wined3d_box *src_box) DECLSPEC_HIDDEN;
  void wined3d_cs_emit_generate_mips(struct wined3d_cs *cs, struct wined3d_shader_resource_view *view) DECLSPEC_HIDDEN;
@@ -684,7 +684,7 @@ index f899ae867f..318a15c552 100644
  void wined3d_cs_init_object(struct wined3d_cs *cs,
          void (*callback)(void *object), void *object) DECLSPEC_HIDDEN;
  HRESULT wined3d_cs_map(struct wined3d_cs *cs, struct wined3d_resource *resource, unsigned int sub_resource_idx,
-@@ -3713,6 +3721,11 @@ struct wined3d_buffer
+@@ -3712,6 +3720,11 @@ struct wined3d_buffer
      UINT stride;                                            /* 0 if no conversion */
      enum wined3d_buffer_conversion_type *conversion_map;    /* NULL if no conversion */
      UINT conversion_stride;                                 /* 0 if no shifted conversion */
