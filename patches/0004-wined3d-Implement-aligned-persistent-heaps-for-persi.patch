@@ -1,4 +1,4 @@
-From 0aacdfb5e167b6ec963faf3ef53be71eb9f377cc Mon Sep 17 00:00:00 2001
+From 65595c191d2a01b2486ba10618f743c930af362b Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Sat, 24 Feb 2018 14:38:59 -0800
 Subject: [PATCH 4/4] wined3d: Implement aligned persistent heaps for
@@ -7,10 +7,11 @@ Subject: [PATCH 4/4] wined3d: Implement aligned persistent heaps for
 ---
  dlls/wined3d/buffer.c          | 16 ++++++++++++----
  dlls/wined3d/buffer_heap.c     | 12 +++++++++---
+ dlls/wined3d/cs.c              | 15 ++++++++++++++-
  dlls/wined3d/device.c          | 15 ++++++++++++++-
  dlls/wined3d/state.c           | 11 ++++++++++-
  dlls/wined3d/wined3d_private.h |  5 ++++-
- 5 files changed, 49 insertions(+), 10 deletions(-)
+ 6 files changed, 63 insertions(+), 11 deletions(-)
 
 diff --git a/dlls/wined3d/buffer.c b/dlls/wined3d/buffer.c
 index ccb090c907..7d7e506817 100644
@@ -104,6 +105,32 @@ index f24fddffb4..02b925b658 100644
      while (elem != NULL)
      {
          TRACE("allocation at %p, size %lld\n", heap->map_ptr + elem->range.offset, elem->range.size);
+diff --git a/dlls/wined3d/cs.c b/dlls/wined3d/cs.c
+index edcf521b72..d7bdc21a25 100644
+--- a/dlls/wined3d/cs.c
++++ b/dlls/wined3d/cs.c
+@@ -2668,7 +2668,20 @@ static void wined3d_cs_exec_discard_buffer(struct wined3d_cs *cs, const void *da
+ 
+     buffer->cs_persistent_map = op->map_range;
+ 
+-    device_invalidate_state(cs->device, STATE_STREAMSRC);
++    // TODO(acomminos): merge this logic with buffer.c functions for standalone BOs
++    if (buffer->bind_flags & WINED3D_BIND_VERTEX_BUFFER)
++        device_invalidate_state(cs->device, STATE_STREAMSRC);
++    if (buffer->bind_flags & WINED3D_BIND_INDEX_BUFFER)
++        device_invalidate_state(cs->device, STATE_INDEXBUFFER);
++    if (buffer->bind_flags & WINED3D_BIND_CONSTANT_BUFFER)
++    {
++        device_invalidate_state(cs->device, STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_VERTEX));
++        device_invalidate_state(cs->device, STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_HULL));
++        device_invalidate_state(cs->device, STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_DOMAIN));
++        device_invalidate_state(cs->device, STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_GEOMETRY));
++        device_invalidate_state(cs->device, STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_PIXEL));
++        device_invalidate_state(cs->device, STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_COMPUTE));
++    }
+ 
+     wined3d_resource_release(&op->buffer->resource);
+ }
 diff --git a/dlls/wined3d/device.c b/dlls/wined3d/device.c
 index 363dcb17f0..e0871d1636 100644
 --- a/dlls/wined3d/device.c
