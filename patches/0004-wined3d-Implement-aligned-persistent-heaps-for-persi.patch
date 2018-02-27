@@ -1,7 +1,7 @@
 From 65595c191d2a01b2486ba10618f743c930af362b Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Sat, 24 Feb 2018 14:38:59 -0800
-Subject: [PATCH 4/4] wined3d: Implement aligned persistent heaps for
+Subject: [PATCH 4/5] wined3d: Implement aligned persistent heaps for
  persistently mapped UBOs.
 
 ---
@@ -236,5 +236,5 @@ index d049d57206..cfa48a5f3e 100644
  // Fetches a buffer from the heap of at least the given size.
  HRESULT wined3d_buffer_heap_alloc(struct wined3d_buffer_heap *heap, GLsizeiptr size, struct wined3d_map_range* out_range) DECLSPEC_HIDDEN;
 -- 
-2.16.1
+2.16.2
 
