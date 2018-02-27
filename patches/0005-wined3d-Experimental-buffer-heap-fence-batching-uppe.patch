@@ -1,19 +1,19 @@
-From 66f0373bb4c1a2139e9816ad47866cb9b9b77c08 Mon Sep 17 00:00:00 2001
+From f61caa6545af38c2a385f4b350d8118fe5d645c1 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Mon, 26 Feb 2018 21:35:40 -0800
 Subject: [PATCH 5/5] wined3d: Experimental buffer heap fence batching, upper
  bound on heap size.
 
 ---
- dlls/wined3d/buffer.c          |   9 ++--
- dlls/wined3d/buffer_heap.c     | 115 ++++++++++++++++++++++++++++-------------
- dlls/wined3d/cs.c              |  15 +-----
+ dlls/wined3d/buffer.c          |  11 +-
+ dlls/wined3d/buffer_heap.c     | 235 ++++++++++++++++++++++++-----------------
+ dlls/wined3d/cs.c              |  15 +--
  dlls/wined3d/device.c          |   5 +-
- dlls/wined3d/wined3d_private.h |  12 +++--
- 5 files changed, 97 insertions(+), 59 deletions(-)
+ dlls/wined3d/wined3d_private.h |  12 ++-
+ 5 files changed, 158 insertions(+), 120 deletions(-)
 
 diff --git a/dlls/wined3d/buffer.c b/dlls/wined3d/buffer.c
-index 7d7e506817..f782c31433 100644
+index 7d7e506817..fbec613c92 100644
 --- a/dlls/wined3d/buffer.c
 +++ b/dlls/wined3d/buffer.c
 @@ -992,9 +992,12 @@ void wined3d_buffer_load(struct wined3d_buffer *buffer, struct wined3d_context *
@@ -32,8 +32,17 @@ index 7d7e506817..f782c31433 100644
      }
  
      /* TODO: Make converting independent from VBOs */
+@@ -1417,7 +1420,7 @@ static HRESULT buffer_resource_sub_resource_map(struct wined3d_resource *resourc
+             struct wined3d_map_range map_range;
+             if (FAILED(hr = wined3d_buffer_heap_alloc(buffer->buffer_heap, resource->size, &map_range)))
+             {
+-                FIXME("Failed to allocate new buffer, falling back to sync path.\n");
++                FIXME_(d3d_perf)("Failed to allocate new buffer, falling back to sync path.\n");
+                 return hr;
+             }
+             map_desc->data = buffer->buffer_heap->map_ptr + map_range.offset + offset;
 diff --git a/dlls/wined3d/buffer_heap.c b/dlls/wined3d/buffer_heap.c
-index 02b925b658..0baa4af02a 100644
+index 02b925b658..0da766abc5 100644
 --- a/dlls/wined3d/buffer_heap.c
 +++ b/dlls/wined3d/buffer_heap.c
 @@ -22,6 +22,7 @@
@@ -53,7 +62,7 @@ index 02b925b658..0baa4af02a 100644
      struct wined3d_fence *fence;
  
      struct wined3d_buffer_heap_element *next;
-@@ -52,13 +53,13 @@ static struct wined3d_buffer_heap_element* element_new(GLintptr offset, GLsizeip
+@@ -52,19 +53,19 @@ static struct wined3d_buffer_heap_element* element_new(GLintptr offset, GLsizeip
      return elem;
  }
  
@@ -69,7 +78,95 @@ index 02b925b658..0baa4af02a 100644
      elem->fence = fence;
      elem->next = NULL;
      return elem;
-@@ -134,6 +135,9 @@ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr s
+ }
+ 
+-static void element_merge_adjacent(struct wined3d_buffer_heap *heap, struct wined3d_buffer_heap_element *elem)
++static void element_merge_adjacent(struct wined3d_buffer_heap_element **head, struct wined3d_buffer_heap_element *elem)
+ {
+     struct wined3d_buffer_heap_element *cur_prev = elem->prev;
+     struct wined3d_buffer_heap_element *cur_next = elem->next;
+@@ -77,8 +78,8 @@ static void element_merge_adjacent(struct wined3d_buffer_heap *heap, struct wine
+         if (cur_prev->prev)
+             cur_prev->prev->next = elem;
+ 
+-        if (cur_prev == heap->free_list_head)
+-            heap->free_list_head = elem;
++        if (cur_prev == *head)
++            *head = elem;
+ 
+         HeapFree(GetProcessHeap(), 0, cur_prev);
+     }
+@@ -94,6 +95,69 @@ static void element_merge_adjacent(struct wined3d_buffer_heap *heap, struct wine
+     }
+ }
+ 
++// Inserts a range into the list starting at `elem`.
++// Updates the head of the list, if necessary.
++static void element_insert_range(struct wined3d_buffer_heap_element **head, struct wined3d_map_range range)
++{
++    struct wined3d_buffer_heap_element *elem = *head;
++    struct wined3d_buffer_heap_element *new_elem;
++    struct wined3d_buffer_heap_element *last_elem = NULL;
++
++    // Special case where the head doesn't exist.
++    if (!elem)
++    {
++        new_elem = element_new(range.offset, range.size);
++        *head = new_elem;
++        return;
++    }
++
++    while (elem)
++    {
++        struct wined3d_map_range *erange = &elem->range;
++        if (range.offset + range.size == erange->offset)
++        {
++            // Left side merge
++            erange->offset = range.offset;
++            erange->size += range.size;
++            // Check if this causes a merge with elem->prev
++            element_merge_adjacent(head, elem);
++            return;
++        }
++        else if (erange->offset + erange->size == range.offset)
++        {
++            // Right side merge
++            erange->size += range.size;
++            // Check if this causes a merge with elem->prev
++            element_merge_adjacent(head, elem);
++            return;
++        }
++        else if (range.offset < erange->offset)
++        {
++            // Append to left, non-merge case.
++            new_elem = element_new(range.offset, range.size);
++            new_elem->prev = elem->prev;
++            new_elem->next = elem;
++            if (elem->prev)
++            {
++                elem->prev->next = new_elem;
++            }
++            if (*head == elem)
++            {
++                *head = new_elem;
++            }
++            elem->prev = new_elem;
++            return;
++        }
++        last_elem = elem;
++        elem = elem->next;
++    }
++
++    // Larger offset than all other elements in the list, append to the end.
++    new_elem = element_new(range.offset, range.size);
++    new_elem->prev = last_elem;
++    last_elem->next = new_elem;
++}
++
+ /* Context activation is done by the caller. */
+ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr size, GLsizeiptr alignment, BOOL write_only, struct wined3d_buffer_heap **buffer_heap)
+ {
+@@ -134,6 +198,9 @@ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr s
      object->free_list_head = element_new(0, size);
      object->fenced_head = object->fenced_tail = NULL;
      object->alignment = alignment;
@@ -79,7 +176,7 @@ index 02b925b658..0baa4af02a 100644
      InitializeCriticalSection(&object->temp_lock);
  
      *buffer_heap = object;
-@@ -155,6 +159,9 @@ HRESULT wined3d_buffer_heap_alloc(struct wined3d_buffer_heap *heap, GLsizeiptr s
+@@ -155,6 +222,9 @@ HRESULT wined3d_buffer_heap_alloc(struct wined3d_buffer_heap *heap, GLsizeiptr s
      // TODO(acomminos): free list binning?
      struct wined3d_buffer_heap_element *elem = heap->free_list_head;
  
@@ -89,7 +186,7 @@ index 02b925b658..0baa4af02a 100644
      // Round up the size to a multiple of the heap's alignment.
      if (heap->alignment)
          size += heap->alignment - (size % heap->alignment);
-@@ -188,6 +195,7 @@ HRESULT wined3d_buffer_heap_alloc(struct wined3d_buffer_heap *heap, GLsizeiptr s
+@@ -188,6 +258,7 @@ HRESULT wined3d_buffer_heap_alloc(struct wined3d_buffer_heap *heap, GLsizeiptr s
                  }
                  HeapFree(GetProcessHeap(), 0, elem);
              }
@@ -97,7 +194,71 @@ index 02b925b658..0baa4af02a 100644
              LeaveCriticalSection(&heap->temp_lock);
              return WINED3D_OK;
          }
-@@ -264,24 +272,58 @@ success:
+@@ -201,87 +272,58 @@ HRESULT wined3d_buffer_heap_alloc(struct wined3d_buffer_heap *heap, GLsizeiptr s
+ HRESULT wined3d_buffer_heap_free(struct wined3d_buffer_heap *heap, struct wined3d_map_range range)
+ {
+     EnterCriticalSection(&heap->temp_lock);
+-    struct wined3d_buffer_heap_element *new_elem;
+-    struct wined3d_buffer_heap_element *elem = heap->free_list_head;
+-    struct wined3d_buffer_heap_element *last_elem = NULL;
+-
+-    // Special case where the head doesn't exist.
+-    if (!elem)
+-    {
+-        new_elem = element_new(range.offset, range.size);
+-        heap->free_list_head = new_elem;
+-        goto success;
+-    }
+ 
+-    while (elem)
+-    {
+-        struct wined3d_map_range *erange = &elem->range;
+-        if (range.offset + range.size == erange->offset)
+-        {
+-            // Left side merge
+-            erange->offset = range.offset;
+-            erange->size += range.size;
+-            // Check if this causes a merge with elem->prev
+-            element_merge_adjacent(heap, elem);
+-            goto success;
+-        }
+-        else if (erange->offset + erange->size == range.offset)
+-        {
+-            // Right side merge
+-            erange->size += range.size;
+-            // Check if this causes a merge with elem->prev
+-            element_merge_adjacent(heap, elem);
+-            goto success;
+-        }
+-        else if (range.offset < erange->offset)
+-        {
+-            // Append to left, non-merge case.
+-            new_elem = element_new(range.offset, range.size);
+-            new_elem->prev = elem->prev;
+-            new_elem->next = elem;
+-            if (elem->prev)
+-            {
+-                elem->prev->next = new_elem;
+-            }
+-            if (heap->free_list_head == elem)
+-            {
+-                heap->free_list_head = new_elem;
+-            }
+-            elem->prev = new_elem;
+-            goto success;
+-        }
+-        last_elem = elem;
+-        elem = elem->next;
+-    }
+-
+-    // Larger offset than all other elements in the list, append to the end.
+-    new_elem = element_new(range.offset, range.size);
+-    new_elem->prev = last_elem;
+-    last_elem->next = new_elem;
++    element_insert_range(&heap->free_list_head, range);
+ 
+-success:
+     LeaveCriticalSection(&heap->temp_lock);
      return WINED3D_OK;
  }
  
@@ -119,14 +280,7 @@ index 02b925b658..0baa4af02a 100644
 -        heap->fenced_tail = elem;
 -    }
 -    else
-+    // FIXME(acomminos): does this list really need to be doubly linked? I think not.
-+    elem->next = heap->pending_fenced_head;
-+    elem->prev = NULL;
-+
-+    if (heap->pending_fenced_head)
-+        heap->pending_fenced_head->prev = elem;
-+
-+    heap->pending_fenced_head = elem;
++    element_insert_range(&heap->pending_fenced_head, range);
 +
 +    heap->pending_fenced_bytes += range.size;
 +    if (heap->pending_fenced_bytes >= heap->pending_fenced_threshold_bytes)
@@ -255,7 +409,7 @@ index d7bdc21a25..bae5d9f4a1 100644
      }
  
 diff --git a/dlls/wined3d/device.c b/dlls/wined3d/device.c
-index e0871d1636..fc3b784d43 100644
+index e0871d1636..bdab83b935 100644
 --- a/dlls/wined3d/device.c
 +++ b/dlls/wined3d/device.c
 @@ -850,9 +850,8 @@ static void create_buffer_heap(struct wined3d_device *device, struct wined3d_con
@@ -265,8 +419,8 @@ index e0871d1636..fc3b784d43 100644
 -    // TODO(acomminos): definitely don't take up all of vram. this is gonna get
 -    //                  paged anyway, though.
 -    const GLsizeiptr HBO_SIZE = device->adapter->vram_bytes / 4;
-+    // TODO(acomminos): 256MB is sane for geometry, maybe not for PBO.
-+    const GLsizeiptr HBO_SIZE = min(256000000, device->adapter->vram_bytes / 4);
++    // TODO(acomminos): 512MB is sane for geometry, maybe not for PBO.
++    const GLsizeiptr HBO_SIZE = min(512000000, device->adapter->vram_bytes / 4);
      const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
  
      GLint ub_alignment;
