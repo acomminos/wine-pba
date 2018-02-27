@@ -1,4 +1,4 @@
-From f61caa6545af38c2a385f4b350d8118fe5d645c1 Mon Sep 17 00:00:00 2001
+From 7a630d56cb1bddfd03cae3cdc43aee949b04abe2 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Mon, 26 Feb 2018 21:35:40 -0800
 Subject: [PATCH 5/5] wined3d: Experimental buffer heap fence batching, upper
@@ -6,11 +6,11 @@ Subject: [PATCH 5/5] wined3d: Experimental buffer heap fence batching, upper
 
 ---
  dlls/wined3d/buffer.c          |  11 +-
- dlls/wined3d/buffer_heap.c     | 235 ++++++++++++++++++++++++-----------------
+ dlls/wined3d/buffer_heap.c     | 232 ++++++++++++++++++++++++-----------------
  dlls/wined3d/cs.c              |  15 +--
  dlls/wined3d/device.c          |   5 +-
  dlls/wined3d/wined3d_private.h |  12 ++-
- 5 files changed, 158 insertions(+), 120 deletions(-)
+ 5 files changed, 154 insertions(+), 121 deletions(-)
 
 diff --git a/dlls/wined3d/buffer.c b/dlls/wined3d/buffer.c
 index 7d7e506817..fbec613c92 100644
@@ -42,7 +42,7 @@ index 7d7e506817..fbec613c92 100644
              }
              map_desc->data = buffer->buffer_heap->map_ptr + map_range.offset + offset;
 diff --git a/dlls/wined3d/buffer_heap.c b/dlls/wined3d/buffer_heap.c
-index 02b925b658..0da766abc5 100644
+index 02b925b658..165a957edd 100644
 --- a/dlls/wined3d/buffer_heap.c
 +++ b/dlls/wined3d/buffer_heap.c
 @@ -22,6 +22,7 @@
@@ -194,14 +194,14 @@ index 02b925b658..0da766abc5 100644
              LeaveCriticalSection(&heap->temp_lock);
              return WINED3D_OK;
          }
-@@ -201,87 +272,58 @@ HRESULT wined3d_buffer_heap_alloc(struct wined3d_buffer_heap *heap, GLsizeiptr s
+@@ -201,87 +272,53 @@ HRESULT wined3d_buffer_heap_alloc(struct wined3d_buffer_heap *heap, GLsizeiptr s
  HRESULT wined3d_buffer_heap_free(struct wined3d_buffer_heap *heap, struct wined3d_map_range range)
  {
      EnterCriticalSection(&heap->temp_lock);
 -    struct wined3d_buffer_heap_element *new_elem;
 -    struct wined3d_buffer_heap_element *elem = heap->free_list_head;
 -    struct wined3d_buffer_heap_element *last_elem = NULL;
--
+ 
 -    // Special case where the head doesn't exist.
 -    if (!elem)
 -    {
@@ -209,29 +209,63 @@ index 02b925b658..0da766abc5 100644
 -        heap->free_list_head = new_elem;
 -        goto success;
 -    }
++    element_insert_range(&heap->free_list_head, range);
  
 -    while (elem)
--    {
++    LeaveCriticalSection(&heap->temp_lock);
++    return WINED3D_OK;
++}
++
++HRESULT wined3d_buffer_heap_free_fenced(struct wined3d_buffer_heap *heap, struct wined3d_device *device, struct wined3d_map_range range)
++{
++    element_insert_range(&heap->pending_fenced_head, range);
++
++    heap->pending_fenced_bytes += range.size;
++    if (heap->pending_fenced_bytes >= heap->pending_fenced_threshold_bytes)
+     {
 -        struct wined3d_map_range *erange = &elem->range;
 -        if (range.offset + range.size == erange->offset)
--        {
++        // TODO(acomminos): break this out into a separate function
++        struct wined3d_buffer_heap_fenced_element *fenced_elem;
++        struct wined3d_fence *fence;
++        HRESULT hr;
++
++        if (FAILED(hr = wined3d_fence_create(device, &fence)))
+         {
 -            // Left side merge
 -            erange->offset = range.offset;
 -            erange->size += range.size;
 -            // Check if this causes a merge with elem->prev
 -            element_merge_adjacent(heap, elem);
 -            goto success;
--        }
++            ERR("Failed to create fence.\n");
++            return hr;
+         }
 -        else if (erange->offset + erange->size == range.offset)
--        {
++
++        fenced_elem = fenced_element_new(heap->pending_fenced_head, fence);
++        if (!fenced_elem)
++            return E_OUTOFMEMORY;
++
++        TRACE_(d3d_perf)("Dispatching fenced buffer set.\n");
++        heap->pending_fenced_bytes = 0;
++        heap->pending_fenced_head = NULL;
++
++        // Append to end of fenced list, which works well if you assume that buffers
++        // are freed in some ascending draw call ordering.
++        if (!heap->fenced_head)
+         {
 -            // Right side merge
 -            erange->size += range.size;
 -            // Check if this causes a merge with elem->prev
 -            element_merge_adjacent(heap, elem);
 -            goto success;
--        }
++            heap->fenced_head = fenced_elem;
++            heap->fenced_tail = fenced_elem;
+         }
 -        else if (range.offset < erange->offset)
--        {
++        else
+         {
 -            // Append to left, non-merge case.
 -            new_elem = element_new(range.offset, range.size);
 -            new_elem->prev = elem->prev;
@@ -246,7 +280,9 @@ index 02b925b658..0da766abc5 100644
 -            }
 -            elem->prev = new_elem;
 -            goto success;
--        }
++            heap->fenced_tail->next = fenced_elem;
++            heap->fenced_tail = fenced_elem;
+         }
 -        last_elem = elem;
 -        elem = elem->next;
 -    }
@@ -255,22 +291,18 @@ index 02b925b658..0da766abc5 100644
 -    new_elem = element_new(range.offset, range.size);
 -    new_elem->prev = last_elem;
 -    last_elem->next = new_elem;
-+    element_insert_range(&heap->free_list_head, range);
- 
+-
 -success:
-     LeaveCriticalSection(&heap->temp_lock);
-     return WINED3D_OK;
- }
- 
+-    LeaveCriticalSection(&heap->temp_lock);
+-    return WINED3D_OK;
+-}
+-
 -HRESULT wined3d_buffer_heap_free_fenced(struct wined3d_buffer_heap *heap, struct wined3d_map_range range, struct wined3d_fence *fence)
-+HRESULT wined3d_buffer_heap_free_fenced(struct wined3d_buffer_heap *heap, struct wined3d_device *device, struct wined3d_map_range range)
- {
+-{
 -    struct wined3d_buffer_heap_fenced_element *elem;
 -    elem = fenced_element_new(range, fence);
-+    struct wined3d_buffer_heap_element *elem;
-+    elem = element_new(range.offset, range.size);
-     if (!elem)
-         return E_OUTOFMEMORY;
+-    if (!elem)
+-        return E_OUTOFMEMORY;
  
 -    // Append to end of fenced list, which works well if you assume that buffers
 -    // are freed in some ascending draw call ordering.
@@ -280,50 +312,14 @@ index 02b925b658..0da766abc5 100644
 -        heap->fenced_tail = elem;
 -    }
 -    else
-+    element_insert_range(&heap->pending_fenced_head, range);
-+
-+    heap->pending_fenced_bytes += range.size;
-+    if (heap->pending_fenced_bytes >= heap->pending_fenced_threshold_bytes)
-     {
+-    {
 -        heap->fenced_tail->next = elem;
 -        heap->fenced_tail = elem;
-+        // TODO(acomminos): break this out into a separate function
-+        struct wined3d_buffer_heap_fenced_element *fenced_elem;
-+        struct wined3d_fence *fence;
-+        HRESULT hr;
-+
-+        if (FAILED(hr = wined3d_fence_create(device, &fence)))
-+        {
-+            ERR("Failed to create fence.\n");
-+            return hr;
-+        }
-+
-+        fenced_elem = fenced_element_new(heap->pending_fenced_head, fence);
-+        if (!fenced_elem)
-+            return E_OUTOFMEMORY;
-+
-+        TRACE_(d3d_perf)("Dispatching fenced buffer set.\n");
-+        heap->pending_fenced_bytes = 0;
-+        heap->pending_fenced_head = NULL;
-+
-+        // Append to end of fenced list, which works well if you assume that buffers
-+        // are freed in some ascending draw call ordering.
-+        if (!heap->fenced_head)
-+        {
-+            heap->fenced_head = fenced_elem;
-+            heap->fenced_tail = fenced_elem;
-+        }
-+        else
-+        {
-+            heap->fenced_tail->next = fenced_elem;
-+            heap->fenced_tail = fenced_elem;
-+        }
-+
 +        wined3d_fence_issue(fence, device);
      }
  
      return WINED3D_OK;
-@@ -294,29 +336,32 @@ HRESULT wined3d_buffer_heap_cs_poll_fences(struct wined3d_buffer_heap *heap, str
+@@ -294,29 +331,32 @@ HRESULT wined3d_buffer_heap_cs_poll_fences(struct wined3d_buffer_heap *heap, str
      if (!elem)
          return WINED3D_OK;
  
