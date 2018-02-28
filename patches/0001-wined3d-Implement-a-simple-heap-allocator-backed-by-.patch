@@ -1,7 +1,7 @@
 From 636d39db43f9cd176fe85869db5e07d3a39f80fb Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Fri, 23 Feb 2018 17:39:13 -0800
-Subject: [PATCH 1/5] wined3d: Implement a simple heap allocator backed by a
+Subject: [PATCH 1/7] wined3d: Implement a simple heap allocator backed by a
  persistent buffer.
 
 ---

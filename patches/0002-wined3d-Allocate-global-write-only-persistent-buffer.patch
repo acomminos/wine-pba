@@ -1,7 +1,7 @@
 From 7f141de6d631a6e0c9cd778f6b3259d41a700bb4 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Fri, 23 Feb 2018 17:42:21 -0800
-Subject: [PATCH 2/5] wined3d: Allocate global write-only persistent buffer
+Subject: [PATCH 2/7] wined3d: Allocate global write-only persistent buffer
  heap at device initialization.
 
 ---
