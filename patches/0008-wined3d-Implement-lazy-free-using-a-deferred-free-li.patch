@@ -1,16 +1,17 @@
-From 9fce05389ad91af825d44b1b6112939efd85b59f Mon Sep 17 00:00:00 2001
+From 44fba11f530b1dff8a8e10fec15b0ca6465e3623 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Wed, 28 Feb 2018 22:46:31 -0800
 Subject: [PATCH 8/8] wined3d: Implement lazy-free using a deferred free list.
 
 ---
  dlls/wined3d/buffer_heap.c     | 308 ++++++++++++++++++++++++++++-------------
+ dlls/wined3d/cs.c              |  12 +-
  dlls/wined3d/device.c          |  16 ++-
  dlls/wined3d/wined3d_private.h |  22 ++-
- 3 files changed, 240 insertions(+), 106 deletions(-)
+ 4 files changed, 248 insertions(+), 110 deletions(-)
 
 diff --git a/dlls/wined3d/buffer_heap.c b/dlls/wined3d/buffer_heap.c
-index f4af1b93b9..091148a0ff 100644
+index f4af1b93b9..3fe5541a6a 100644
 --- a/dlls/wined3d/buffer_heap.c
 +++ b/dlls/wined3d/buffer_heap.c
 @@ -27,24 +27,20 @@ WINE_DECLARE_DEBUG_CHANNEL(d3d_perf);
@@ -160,7 +161,7 @@ index f4af1b93b9..091148a0ff 100644
 -    object->pending_fenced_head = NULL;
 -    object->pending_fenced_threshold_bytes = size / 4; // FIXME(acomminos): make this externally declared
 +    // FIXME(acomminos): make this externally declared
-+    object->pending_fenced_threshold_bytes = 64 * 1024 * 1024;
++    object->pending_fenced_threshold_bytes = 16 * 1024 * 1024;
      InitializeCriticalSection(&object->temp_lock);
  
      initial_elem = element_new(0, size);
@@ -473,6 +474,36 @@ index f4af1b93b9..091148a0ff 100644
 +    LeaveCriticalSection(&heap->temp_lock);
 +    return WINED3D_OK;
 +}
+diff --git a/dlls/wined3d/cs.c b/dlls/wined3d/cs.c
+index bae5d9f4a1..8fd9b01a36 100644
+--- a/dlls/wined3d/cs.c
++++ b/dlls/wined3d/cs.c
+@@ -2644,10 +2644,6 @@ static void wined3d_cs_exec_discard_buffer(struct wined3d_cs *cs, const void *da
+     struct wined3d_buffer *buffer = op->buffer;
+     HRESULT hr;
+ 
+-    // Poll for discarded buffers whose fenced have been triggered here to avoid
+-    // excessive VRAM consumption.
+-    wined3d_buffer_heap_cs_poll_fences(buffer->buffer_heap, cs->device);
+-
+     // TODO(acomminos): should call into buffer.c here instead.
+     if (FAILED(hr = wined3d_buffer_heap_free_fenced(buffer->buffer_heap, cs->device, buffer->cs_persistent_map)))
+     {
+@@ -2975,6 +2971,14 @@ static void poll_queries(struct wined3d_cs *cs)
+         list_init(&query->poll_list_entry);
+         InterlockedIncrement(&query->counter_retrieved);
+     }
++
++    // Poll for discarded persistent buffers whose fences have been triggered
++    // here to avoid excessive VRAM consumption.
++    // XXX(acomminos): clean this up, integrate with prior section.
++    if (cs->device->wo_buffer_heap)
++        wined3d_buffer_heap_cs_poll_fences(cs->device->wo_buffer_heap, cs->device);
++    if (cs->device->cb_buffer_heap)
++        wined3d_buffer_heap_cs_poll_fences(cs->device->cb_buffer_heap, cs->device);
+ }
+ 
+ static void wined3d_cs_wait_event(struct wined3d_cs *cs)
 diff --git a/dlls/wined3d/device.c b/dlls/wined3d/device.c
 index bdab83b935..9f300ca572 100644
 --- a/dlls/wined3d/device.c
