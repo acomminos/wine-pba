@@ -1,20 +1,19 @@
-From 8d0b5ad03cd3c2bd57f1b04b98c95fa923b025e4 Mon Sep 17 00:00:00 2001
+From 8f10c1fd228f21167843a417596e22814089fe3a Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
-Date: Wed, 28 Feb 2018 20:23:11 -0800
-Subject: [PATCH 8/8] wined3d: Test out using deferred coalescing and free
- lists for the PBA.
+Date: Wed, 28 Feb 2018 22:46:31 -0800
+Subject: [PATCH 8/8] wined3d: Implement lazy-free using a deferred free list.
 
 ---
- dlls/wined3d/buffer_heap.c     | 261 +++++++++++++++++++++++++++++------------
+ dlls/wined3d/buffer_heap.c     | 310 ++++++++++++++++++++++++++++-------------
  dlls/wined3d/device.c          |  16 ++-
- dlls/wined3d/wined3d_private.h |  14 ++-
- 3 files changed, 206 insertions(+), 85 deletions(-)
+ dlls/wined3d/wined3d_private.h |  22 ++-
+ 3 files changed, 242 insertions(+), 106 deletions(-)
 
 diff --git a/dlls/wined3d/buffer_heap.c b/dlls/wined3d/buffer_heap.c
-index f4af1b93b9..6e359af941 100644
+index f4af1b93b9..35d0482c73 100644
 --- a/dlls/wined3d/buffer_heap.c
 +++ b/dlls/wined3d/buffer_heap.c
-@@ -27,24 +27,24 @@ WINE_DECLARE_DEBUG_CHANNEL(d3d_perf);
+@@ -27,24 +27,20 @@ WINE_DECLARE_DEBUG_CHANNEL(d3d_perf);
  
  struct wined3d_buffer_heap_element
  {
@@ -28,38 +27,31 @@ index f4af1b93b9..6e359af941 100644
      // Binned free list positions
      struct wined3d_buffer_heap_element *next;
      struct wined3d_buffer_heap_element *prev;
--};
--
+ };
+ 
 -struct wined3d_buffer_heap_range
 -{
 -    struct wined3d_map_range range;
- 
+-
 -    struct wined3d_buffer_heap_range *next;
-+    // Coalesce queue positions
-+    struct wined3d_buffer_heap_element *coalesce_next;
-+    struct wined3d_buffer_heap_element *coalesce_prev;
- };
- 
+-};
+-
  struct wined3d_buffer_heap_fenced_element
  {
 -    struct wined3d_buffer_heap_range *ranges;
-+    struct wined3d_buffer_heap_element *ranges;
++    struct wined3d_buffer_heap_bin_set free_list;
      struct wined3d_fence *fence;
  
      struct wined3d_buffer_heap_fenced_element *next;
-@@ -58,8 +58,11 @@ static struct wined3d_buffer_heap_element* element_new(GLsizei offset, GLsizei s
+@@ -58,6 +54,7 @@ static struct wined3d_buffer_heap_element* element_new(GLsizei offset, GLsizei s
          return NULL;
      elem->range.offset = offset;
      elem->range.size = size;
 +    elem->in_tree = FALSE;
      elem->prev = NULL;
      elem->next = NULL;
-+    elem->coalesce_prev = NULL;
-+    elem->coalesce_next = NULL;
      return elem;
- }
- 
-@@ -86,9 +89,8 @@ static int element_bin(struct wined3d_buffer_heap_element *elem)
+@@ -86,27 +83,41 @@ static int element_bin(struct wined3d_buffer_heap_element *elem)
      return min(WINED3D_BUFFER_HEAP_BINS - 1, bitwise_log2_floor(elem->range.size));
  }
  
@@ -71,13 +63,22 @@ index f4af1b93b9..6e359af941 100644
  {
      int bin = element_bin(elem);
  
-@@ -98,15 +100,37 @@ static void element_insert_free(struct wined3d_buffer_heap *heap, struct wined3d
-         heap->free_bins[bin]->prev = elem;
-     heap->free_bins[bin] = elem;
- 
+     elem->prev = NULL;
+-    elem->next = heap->free_bins[bin];
+-    if (heap->free_bins[bin])
+-        heap->free_bins[bin]->prev = elem;
+-    heap->free_bins[bin] = elem;
++    elem->next = heap->free_list.bins[bin].head;
++    if (heap->free_list.bins[bin].head)
++        heap->free_list.bins[bin].head->prev = elem;
++    heap->free_list.bins[bin].head = elem;
++
++    if (!heap->free_list.bins[bin].tail)
++        heap->free_list.bins[bin].tail = elem;
++
 +    TRACE("Inserted allocation at %p of size %lld into bin %d\n", elem->range.offset, elem->range.size, bin);
 +}
-+
+ 
 +// Inserts an elemnet into the free tree. Does not perform coalescing.
 +static void element_insert_free_tree(struct wined3d_buffer_heap *heap, struct wined3d_buffer_heap_element *elem)
 +{
@@ -91,19 +92,10 @@ index f4af1b93b9..6e359af941 100644
          ERR("Failed to insert element into free tree.\n");
 +        return;
      }
+-
+-    TRACE("Inserted allocation at %p of size %lld into bin %d\n", elem->range.offset, elem->range.size, bin);
 +    TRACE("Inserted allocation at %p of size %lld into free tree\n", elem->range.offset, elem->range.size);
 +    elem->in_tree = TRUE;
-+}
- 
--    TRACE("Inserted allocation at %p of size %lld into bin %d\n", elem->range.offset, elem->range.size, bin);
-+// Defers an element for coalescing.
-+static void element_defer_coalesce(struct wined3d_buffer_heap *heap, struct wined3d_buffer_heap_element *elem)
-+{
-+    elem->coalesce_next = heap->deferred_coalesce_head;
-+    elem->coalesce_prev = NULL;
-+    if (heap->deferred_coalesce_head)
-+        heap->deferred_coalesce_head->coalesce_prev = elem;
-+    heap->deferred_coalesce_head = elem;
  }
  
 -// Removes an element from the free tree and its bin.
@@ -111,24 +103,22 @@ index f4af1b93b9..6e359af941 100644
  static void element_remove_free(struct wined3d_buffer_heap *heap, struct wined3d_buffer_heap_element *elem)
  {
      int bin = element_bin(elem);
-@@ -123,12 +147,29 @@ static void element_remove_free(struct wined3d_buffer_heap *heap, struct wined3d
+@@ -117,24 +128,31 @@ static void element_remove_free(struct wined3d_buffer_heap *heap, struct wined3d
+     if (elem->next)
+         elem->next->prev = elem->prev;
+ 
+-    if (!elem->prev)
+-        heap->free_bins[bin] = elem->next;
++    if (elem == heap->free_list.bins[bin].head)
++        heap->free_list.bins[bin].head = elem->next;
++
++    if (elem == heap->free_list.bins[bin].tail)
++        heap->free_list.bins[bin].head = elem->prev;
+ 
      elem->prev = NULL;
      elem->next = NULL;
  
 -    wine_rb_remove(&heap->free_tree, &elem->entry);
-+    // No need to coalesce a buffer that's been reallocated quickly.
-+    if (elem->coalesce_prev)
-+        elem->coalesce_prev->coalesce_next = elem->coalesce_next;
-+
-+    if (heap->deferred_coalesce_head == elem)
-+        heap->deferred_coalesce_head = elem->coalesce_next;
-+
-+    if (elem->coalesce_next)
-+        elem->coalesce_next->coalesce_prev = elem->coalesce_prev;
-+
-+    elem->coalesce_prev = NULL;
-+    elem->coalesce_next = NULL;
-+
 +    if (elem->in_tree)
 +    {
 +        wine_rb_remove(&heap->free_tree, &elem->entry);
@@ -139,11 +129,18 @@ index f4af1b93b9..6e359af941 100644
  }
  
 -static struct wined3d_buffer_heap_fenced_element* fenced_element_new(struct wined3d_buffer_heap_range *ranges, struct wined3d_fence* fence)
-+static struct wined3d_buffer_heap_fenced_element* fenced_element_new(struct wined3d_buffer_heap_element *ranges, struct wined3d_fence* fence)
++static struct wined3d_buffer_heap_fenced_element* fenced_element_new(struct wined3d_buffer_heap_bin_set bins, struct wined3d_fence* fence)
  {
      struct wined3d_buffer_heap_fenced_element* elem;
      elem = HeapAlloc(GetProcessHeap(), 0, sizeof(struct wined3d_buffer_heap_fenced_element));
-@@ -163,6 +204,11 @@ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr s
+     if (!elem)
+         return NULL;
+-    elem->ranges = ranges;
++    elem->free_list = bins;
+     elem->fence = fence;
+     elem->next = NULL;
+     return elem;
+@@ -163,6 +181,11 @@ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr s
  
      struct wined3d_buffer_heap *object;
  
@@ -155,10 +152,12 @@ index f4af1b93b9..6e359af941 100644
      if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
      {
          return E_OUTOFMEMORY;
-@@ -196,11 +242,13 @@ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr s
+@@ -194,13 +217,13 @@ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr s
+ 
+     object->fenced_head = object->fenced_tail = NULL;
      object->alignment = alignment;
-     object->pending_fenced_bytes = 0;
-     object->pending_fenced_head = NULL;
+-    object->pending_fenced_bytes = 0;
+-    object->pending_fenced_head = NULL;
 -    object->pending_fenced_threshold_bytes = size / 4; // FIXME(acomminos): make this externally declared
 +    // FIXME(acomminos): make this externally declared
 +    object->pending_fenced_threshold_bytes = 64 * 1024 * 1024;
@@ -171,16 +170,15 @@ index f4af1b93b9..6e359af941 100644
  
      *buffer_heap = object;
  
-@@ -217,16 +265,20 @@ HRESULT wined3d_buffer_heap_destroy(struct wined3d_buffer_heap *heap, struct win
+@@ -217,21 +240,23 @@ HRESULT wined3d_buffer_heap_destroy(struct wined3d_buffer_heap *heap, struct win
  HRESULT wined3d_buffer_heap_alloc(struct wined3d_buffer_heap *heap, GLsizeiptr size, struct wined3d_map_range *out_range)
  {
      int initial_bin;
-+
-     EnterCriticalSection(&heap->temp_lock);
+-    EnterCriticalSection(&heap->temp_lock);
  
 -    // Round to the nearest power of two to reduce fragmentation.
 -    size = 1ULL << bitwise_log2_ceil(size);
-+    // TODO(acomminos): trigger deferred allocator based on fragmentation level
++    EnterCriticalSection(&heap->temp_lock);
  
 -    // Round up the size to a multiple of the heap's alignment.
 +    // Align size values where possible.
@@ -196,20 +194,26 @@ index f4af1b93b9..6e359af941 100644
      initial_bin = min(WINED3D_BUFFER_HEAP_BINS - 1, bitwise_log2_ceil(size));
  
      for (int i = initial_bin; i < WINED3D_BUFFER_HEAP_BINS; i++)
-@@ -247,7 +299,8 @@ HRESULT wined3d_buffer_heap_alloc(struct wined3d_buffer_heap *heap, GLsizeiptr s
+     {
+-        struct wined3d_buffer_heap_element *elem = heap->free_bins[i];
++        struct wined3d_buffer_heap_element *elem = heap->free_list.bins[i].head;
+         if (elem)
+         {
+             struct wined3d_map_range remaining_range;
+@@ -247,7 +272,7 @@ HRESULT wined3d_buffer_heap_alloc(struct wined3d_buffer_heap *heap, GLsizeiptr s
              if (remaining_range.size > 0)
              {
                  elem->range = remaining_range;
 -                element_insert_free(heap, elem);
 +                element_insert_free_bin(heap, elem);
-+                element_defer_coalesce(heap, elem);
              }
              else
              {
-@@ -259,15 +312,27 @@ HRESULT wined3d_buffer_heap_alloc(struct wined3d_buffer_heap *heap, GLsizeiptr s
-         }
+@@ -260,68 +285,33 @@ HRESULT wined3d_buffer_heap_alloc(struct wined3d_buffer_heap *heap, GLsizeiptr s
      }
  
+     LeaveCriticalSection(&heap->temp_lock);
++
 +    // Attempt to coalesce blocks until an allocation of the requested size is
 +    // available.
 +    GLsizei coalesced_size;
@@ -218,12 +222,9 @@ index f4af1b93b9..6e359af941 100644
 +        FIXME_(d3d_perf)("Forcing coalesce, not enough free space in buffer heap.\n");
 +        if (coalesced_size >= size)
 +        {
-+            LeaveCriticalSection(&heap->temp_lock);
 +            return wined3d_buffer_heap_alloc(heap, size, out_range);
 +        }
 +    }
-+
-     LeaveCriticalSection(&heap->temp_lock);
 +
      return WINED3DERR_OUTOFVIDEOMEMORY;
  }
@@ -233,10 +234,10 @@ index f4af1b93b9..6e359af941 100644
      struct wined3d_buffer_heap_element *elem = element_new(range.offset, range.size);
 -    struct wined3d_map_range coalesced_range = range;
 -    struct wine_rb_entry *entry;
-     HRESULT hr;
+-    HRESULT hr;
  
      if (!elem)
-@@ -275,53 +340,9 @@ HRESULT wined3d_buffer_heap_free(struct wined3d_buffer_heap *heap, struct wined3
+         return E_OUTOFMEMORY;
  
      EnterCriticalSection(&heap->temp_lock);
  
@@ -289,73 +290,131 @@ index f4af1b93b9..6e359af941 100644
 -    element_insert_free(heap, elem);
 +    // Only insert the element into a free bin, coalescing will occur later.
 +    element_insert_free_bin(heap, elem);
-+    element_defer_coalesce(heap, elem);
  
      LeaveCriticalSection(&heap->temp_lock);
  
-@@ -330,8 +351,9 @@ HRESULT wined3d_buffer_heap_free(struct wined3d_buffer_heap *heap, struct wined3
+@@ -330,10 +320,21 @@ HRESULT wined3d_buffer_heap_free(struct wined3d_buffer_heap *heap, struct wined3
  
  HRESULT wined3d_buffer_heap_free_fenced(struct wined3d_buffer_heap *heap, struct wined3d_device *device, struct wined3d_map_range range)
  {
 -    struct wined3d_buffer_heap_range *elem = HeapAlloc(GetProcessHeap(), 0, sizeof(struct wined3d_buffer_heap_range));
 -    elem->range = range;
+-    elem->next = heap->pending_fenced_head;
+-    heap->pending_fenced_head = elem;
 +    struct wined3d_buffer_heap_element *elem = element_new(range.offset, range.size);
-+    if (heap->pending_fenced_head)
-+        heap->pending_fenced_head->prev = elem;
-     elem->next = heap->pending_fenced_head;
-     heap->pending_fenced_head = elem;
++    int bin_index = element_bin(elem);
++    struct wined3d_buffer_heap_bin *bin = &heap->pending_fenced_bins.bins[bin_index];
++
++    if (bin->tail)
++    {
++        bin->tail->next = elem;
++        elem->prev = bin->tail;
++        bin->tail = elem;
++    }
++    else
++    {
++        bin->head = elem;
++        bin->tail = elem;
++    }
  
-@@ -390,15 +412,22 @@ HRESULT wined3d_buffer_heap_cs_poll_fences(struct wined3d_buffer_heap *heap, str
+     heap->pending_fenced_bytes += range.size;
+     if (heap->pending_fenced_bytes >= heap->pending_fenced_threshold_bytes)
+@@ -349,13 +350,13 @@ HRESULT wined3d_buffer_heap_free_fenced(struct wined3d_buffer_heap *heap, struct
+             return hr;
+         }
+ 
+-        fenced_elem = fenced_element_new(heap->pending_fenced_head, fence);
++        fenced_elem = fenced_element_new(heap->pending_fenced_bins, fence);
+         if (!fenced_elem)
+             return E_OUTOFMEMORY;
+ 
+         TRACE_(d3d_perf)("Dispatching fenced buffer set.\n");
+         heap->pending_fenced_bytes = 0;
+-        heap->pending_fenced_head = NULL;
++        memset(&heap->pending_fenced_bins, 0, sizeof(heap->pending_fenced_bins));
+ 
+         // Append to end of fenced list, which works well if you assume that buffers
+         // are freed in some ascending draw call ordering.
+@@ -390,15 +391,28 @@ HRESULT wined3d_buffer_heap_cs_poll_fences(struct wined3d_buffer_heap *heap, str
          case WINED3D_FENCE_NOT_STARTED:
              {
                  TRACE_(d3d_perf)("Freed fence group.\n");
 -                struct wined3d_buffer_heap_range *range_elem = elem->ranges;
 -                // FIXME(acomminos): this might take a while. incrementally do this?
-+
-+                // Add freed elements to free bins, coalesce queue.
-+                struct wined3d_buffer_heap_element *range_elem = elem->ranges;
+-                while (range_elem)
 +
 +                EnterCriticalSection(&heap->temp_lock);
-                 while (range_elem)
++                for (int i = 0; i < WINED3D_BUFFER_HEAP_BINS; i++)
                  {
 -                    struct wined3d_buffer_heap_range *next = range_elem->next;
 -                    wined3d_buffer_heap_free(heap, range_elem->range);
 -                    HeapFree(GetProcessHeap(), 0, range_elem);
-+                    struct wined3d_buffer_heap_element *next = range_elem->next;
+-                    range_elem = next;
++                    struct wined3d_buffer_heap_bin *elem_bin = &elem->free_list.bins[i];
++                    if (!elem_bin->tail)
++                        continue;
 +
-+                    // Add to free bin for immediate allocation.
-+                    element_insert_free_bin(heap, range_elem);
-+                    element_defer_coalesce(heap, range_elem);
-+
-                     range_elem = next;
++                    struct wined3d_buffer_heap_bin *heap_bin = &heap->free_list.bins[i];
++                    if (heap_bin->head)
++                    {
++                        elem_bin->tail->next = heap_bin->head;
++                        heap_bin->head->prev = elem_bin->tail;
++                        heap_bin->head = elem_bin->head;
++                    }
++                    else
++                    {
++                        heap_bin->head = elem_bin->head;
++                        heap_bin->tail = elem_bin->tail;
++                    }
                  }
 +                LeaveCriticalSection(&heap->temp_lock);
  
                  wined3d_fence_destroy(elem->fence);
  
-@@ -413,3 +442,79 @@ HRESULT wined3d_buffer_heap_cs_poll_fences(struct wined3d_buffer_heap *heap, str
+@@ -413,3 +427,103 @@ HRESULT wined3d_buffer_heap_cs_poll_fences(struct wined3d_buffer_heap *heap, str
  
      return WINED3D_OK;
  }
 +
 +HRESULT wined3d_buffer_heap_deferred_coalesce(struct wined3d_buffer_heap *heap, GLsizei *coalesced_size)
 +{
-+    struct wined3d_buffer_heap_element *elem;
++    struct wined3d_buffer_heap_element *elem = NULL;
 +    struct wine_rb_entry *entry;
 +    struct wined3d_map_range coalesced_range;
 +
++    // XXX(acomminos): is it always the best idea to coalesce by smallest
++    // chunks? these are the most likely to be useless.
 +    EnterCriticalSection(&heap->temp_lock);
 +
-+    elem = heap->deferred_coalesce_head;
-+    if (!elem)
++    // TODO(acomminos): on one hand, if there's a lot of elements in the list,
++    // it's highly fragmented. on the other, we can potentially waste a decent
++    // sum of time checking for uncoalesced bins.
++    for (int i = 0; !elem && i < WINED3D_BUFFER_HEAP_BINS; i++)
 +    {
-+        LeaveCriticalSection(&heap->temp_lock);
-+        *coalesced_size = 0; // List is empty
-+        return WINED3D_OK;
++        struct wined3d_buffer_heap_element *next = heap->free_list.bins[i].head;
++        while (next)
++        {
++            if (!next->in_tree)
++            {
++                // Find the first element not in-tree.
++                elem = next;
++                break;
++            }
++            next = next->next;
++        }
 +    }
 +
-+    // Remove element from free list, we may change its size or offset.
++    // TODO(acomminos): acquire a separate lock for the free tree here.
++    if (!elem)
++    {
++        if (coalesced_size)
++            *coalesced_size = 0; // List is empty
++        LeaveCriticalSection(&heap->temp_lock);
++        return WINED3D_OK;
++    }
 +    element_remove_free(heap, elem);
++
++    // Remove element from free list, we may change its size or offset.
 +    coalesced_range = elem->range;
 +
 +    // TODO(acomminos): implement lower_bound, upper_bound.
@@ -400,6 +459,9 @@ index f4af1b93b9..6e359af941 100644
 +    }
 +
 +    wine_rb_remove(&heap->free_tree, &elem->entry);
++
++    if (coalesced_range.size > elem->range.size)
++        FIXME_(d3d_perf)("Coalesced out an extra %lld bytes\n", coalesced_range.size - elem->range.size);
 +
 +    // Update with coalesced range.
 +    elem->range = coalesced_range;
@@ -456,10 +518,10 @@ index bdab83b935..9f300ca572 100644
  
  /* Context activation is done by the caller. */
 diff --git a/dlls/wined3d/wined3d_private.h b/dlls/wined3d/wined3d_private.h
-index 14cad92f0f..77585ea1bf 100644
+index 14cad92f0f..40886c058a 100644
 --- a/dlls/wined3d/wined3d_private.h
 +++ b/dlls/wined3d/wined3d_private.h
-@@ -3667,7 +3667,6 @@ enum wined3d_buffer_conversion_type
+@@ -3667,11 +3667,21 @@ enum wined3d_buffer_conversion_type
  
  struct wined3d_buffer_heap_element;
  struct wined3d_buffer_heap_fenced_element;
@@ -467,24 +529,36 @@ index 14cad92f0f..77585ea1bf 100644
  
  // Number of power-of-two buckets to populate.
  #define WINED3D_BUFFER_HEAP_BINS 32
-@@ -3684,10 +3683,15 @@ struct wined3d_buffer_heap
+ 
++struct wined3d_buffer_heap_bin
++{
++    struct wined3d_buffer_heap_element *head;
++    struct wined3d_buffer_heap_element *tail;
++};
++
++struct wined3d_buffer_heap_bin_set
++{
++    struct wined3d_buffer_heap_bin bins[WINED3D_BUFFER_HEAP_BINS];
++};
++
+ // A heap that manages allocations with a single GL buffer.
+ struct wined3d_buffer_heap
+ {
+@@ -3680,11 +3690,11 @@ struct wined3d_buffer_heap
+     GLsizeiptr alignment;
+     CRITICAL_SECTION temp_lock; // Temporary lock while we implement the fenced free list.
+ 
+-    struct wined3d_buffer_heap_element *free_bins[WINED3D_BUFFER_HEAP_BINS];
++    struct wined3d_buffer_heap_bin_set free_list;
      struct wine_rb_tree free_tree; // Free regions keyed on their base address.
  
      // Elements that need to be fenced, but haven't reached the required size.
 -    struct wined3d_buffer_heap_range *pending_fenced_head;
-+    struct wined3d_buffer_heap_element *pending_fenced_head;
++    struct wined3d_buffer_heap_bin_set pending_fenced_bins;
      GLsizeiptr pending_fenced_bytes; // Number of free bytes in the active fenced region.
      GLsizeiptr pending_fenced_threshold_bytes; // Number of bytes required before fencing.
  
-+    // Elements that have yet to be inserted into the free tree for coalescing.
-+    // Should be done only when the CS thread is idle, or under memory pressure.
-+    // This is highly advantageous for handling rapid buffer reallocations.
-+    struct wined3d_buffer_heap_element *deferred_coalesce_head;
-+
-     // List of sets of buffers behind a common fence, in FIFO order.
-     struct wined3d_buffer_heap_fenced_element *fenced_head;
-     struct wined3d_buffer_heap_fenced_element *fenced_tail;
-@@ -3696,6 +3700,7 @@ struct wined3d_buffer_heap
+@@ -3696,6 +3706,7 @@ struct wined3d_buffer_heap
  HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr size, GLsizeiptr alignment, BOOL write_only, struct wined3d_buffer_heap **heap) DECLSPEC_HIDDEN;
  HRESULT wined3d_buffer_heap_destroy(struct wined3d_buffer_heap *heap, struct wined3d_context *context) DECLSPEC_HIDDEN;
  // Fetches a buffer from the heap of at least the given size.
@@ -492,7 +566,7 @@ index 14cad92f0f..77585ea1bf 100644
  HRESULT wined3d_buffer_heap_alloc(struct wined3d_buffer_heap *heap, GLsizeiptr size, struct wined3d_map_range* out_range) DECLSPEC_HIDDEN;
  // Immediately frees a heap-allocated buffer segment.
  HRESULT wined3d_buffer_heap_free(struct wined3d_buffer_heap *heap, struct wined3d_map_range range) DECLSPEC_HIDDEN;
-@@ -3704,6 +3709,11 @@ HRESULT wined3d_buffer_heap_free_fenced(struct wined3d_buffer_heap *heap, struct
+@@ -3704,6 +3715,11 @@ HRESULT wined3d_buffer_heap_free_fenced(struct wined3d_buffer_heap *heap, struct
  // Moves a buffers with a signaled fence from the fenced list to the free list.
  // Must be executed on the CS thread.
  HRESULT wined3d_buffer_heap_cs_poll_fences(struct wined3d_buffer_heap *heap, struct wined3d_device *device) DECLSPEC_HIDDEN;
