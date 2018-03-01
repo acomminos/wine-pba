@@ -1,7 +1,7 @@
 From 3e72163af5712be1a51957effa183edc7a9fb2a6 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Fri, 23 Feb 2018 17:41:43 -0800
-Subject: [PATCH 3/7] wined3d: Add support for persistently mapped
+Subject: [PATCH 3/8] wined3d: Add support for persistently mapped
  wined3d_buffer resources.
 
 ---

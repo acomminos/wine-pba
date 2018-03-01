@@ -1,7 +1,7 @@
 From 65595c191d2a01b2486ba10618f743c930af362b Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Sat, 24 Feb 2018 14:38:59 -0800
-Subject: [PATCH 4/7] wined3d: Implement aligned persistent heaps for
+Subject: [PATCH 4/8] wined3d: Implement aligned persistent heaps for
  persistently mapped UBOs.
 
 ---

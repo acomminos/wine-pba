@@ -1,7 +1,7 @@
 From 7a630d56cb1bddfd03cae3cdc43aee949b04abe2 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Mon, 26 Feb 2018 21:35:40 -0800
-Subject: [PATCH 5/7] wined3d: Experimental buffer heap fence batching, upper
+Subject: [PATCH 5/8] wined3d: Experimental buffer heap fence batching, upper
  bound on heap size.
 
 ---
