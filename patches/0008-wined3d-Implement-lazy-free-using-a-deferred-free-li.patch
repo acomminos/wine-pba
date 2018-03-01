@@ -1,16 +1,16 @@
-From 8f10c1fd228f21167843a417596e22814089fe3a Mon Sep 17 00:00:00 2001
+From 9fce05389ad91af825d44b1b6112939efd85b59f Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Wed, 28 Feb 2018 22:46:31 -0800
 Subject: [PATCH 8/8] wined3d: Implement lazy-free using a deferred free list.
 
 ---
- dlls/wined3d/buffer_heap.c     | 310 ++++++++++++++++++++++++++++-------------
+ dlls/wined3d/buffer_heap.c     | 308 ++++++++++++++++++++++++++++-------------
  dlls/wined3d/device.c          |  16 ++-
  dlls/wined3d/wined3d_private.h |  22 ++-
- 3 files changed, 242 insertions(+), 106 deletions(-)
+ 3 files changed, 240 insertions(+), 106 deletions(-)
 
 diff --git a/dlls/wined3d/buffer_heap.c b/dlls/wined3d/buffer_heap.c
-index f4af1b93b9..35d0482c73 100644
+index f4af1b93b9..091148a0ff 100644
 --- a/dlls/wined3d/buffer_heap.c
 +++ b/dlls/wined3d/buffer_heap.c
 @@ -27,24 +27,20 @@ WINE_DECLARE_DEBUG_CHANNEL(d3d_perf);
@@ -217,7 +217,7 @@ index f4af1b93b9..35d0482c73 100644
 +    // Attempt to coalesce blocks until an allocation of the requested size is
 +    // available.
 +    GLsizei coalesced_size;
-+    while (SUCCEEDED(wined3d_buffer_heap_deferred_coalesce(heap, &coalesced_size)) && coalesced_size > 0)
++    while (SUCCEEDED(wined3d_buffer_heap_deferred_coalesce(heap, &coalesced_size)))
 +    {
 +        FIXME_(d3d_perf)("Forcing coalesce, not enough free space in buffer heap.\n");
 +        if (coalesced_size >= size)
@@ -371,7 +371,7 @@ index f4af1b93b9..35d0482c73 100644
  
                  wined3d_fence_destroy(elem->fence);
  
-@@ -413,3 +427,103 @@ HRESULT wined3d_buffer_heap_cs_poll_fences(struct wined3d_buffer_heap *heap, str
+@@ -413,3 +427,101 @@ HRESULT wined3d_buffer_heap_cs_poll_fences(struct wined3d_buffer_heap *heap, str
  
      return WINED3D_OK;
  }
@@ -407,10 +407,8 @@ index f4af1b93b9..35d0482c73 100644
 +    // TODO(acomminos): acquire a separate lock for the free tree here.
 +    if (!elem)
 +    {
-+        if (coalesced_size)
-+            *coalesced_size = 0; // List is empty
 +        LeaveCriticalSection(&heap->temp_lock);
-+        return WINED3D_OK;
++        return E_FAIL;
 +    }
 +    element_remove_free(heap, elem);
 +
@@ -518,7 +516,7 @@ index bdab83b935..9f300ca572 100644
  
  /* Context activation is done by the caller. */
 diff --git a/dlls/wined3d/wined3d_private.h b/dlls/wined3d/wined3d_private.h
-index 14cad92f0f..40886c058a 100644
+index 14cad92f0f..3011609ee1 100644
 --- a/dlls/wined3d/wined3d_private.h
 +++ b/dlls/wined3d/wined3d_private.h
 @@ -3667,11 +3667,21 @@ enum wined3d_buffer_conversion_type
@@ -572,8 +570,8 @@ index 14cad92f0f..40886c058a 100644
  HRESULT wined3d_buffer_heap_cs_poll_fences(struct wined3d_buffer_heap *heap, struct wined3d_device *device) DECLSPEC_HIDDEN;
 +// Performs deferred coalescing of fenced buffers. To be called when the CS
 +// thread is idle, or under memory pressure.
-+// Outputs the size of the new coalesced region in `coalesced_size`, zero if
-+// out of elements for coalescing.
++// Outputs the size of the new coalesced region in `coalesced_size`, or an error
++// if there are no remaining elements to be coalesced.
 +HRESULT wined3d_buffer_heap_deferred_coalesce(struct wined3d_buffer_heap *heap, GLsizei *coalesced_size) DECLSPEC_HIDDEN;
  
  struct wined3d_buffer
