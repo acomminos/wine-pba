@@ -1,7 +1,7 @@
 From 2acd4b6ca9cadb84eb38bf1fc4bd5b2ccab3c532 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Tue, 27 Feb 2018 16:11:10 -0800
-Subject: [PATCH 6/8] wined3d: Switch wined3d_buffer_heap to be backed by an
+Subject: [PATCH 6/9] wined3d: Switch wined3d_buffer_heap to be backed by an
  rb-tree.
 
 ---

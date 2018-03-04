@@ -1,7 +1,7 @@
 From 831d8bc7117ddb24507bd60f4c9c0df37b4b9699 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Wed, 28 Feb 2018 22:46:31 -0800
-Subject: [PATCH 8/8] wined3d: Implement lazy-free using a deferred free list.
+Subject: [PATCH 8/9] wined3d: Implement lazy-free using a deferred free list.
 
 ---
  dlls/wined3d/buffer_heap.c     | 325 ++++++++++++++++++++++++++++-------------

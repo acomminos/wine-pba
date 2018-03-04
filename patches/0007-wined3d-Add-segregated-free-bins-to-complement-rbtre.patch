@@ -1,7 +1,7 @@
 From 89ca25afda23b8ed5f6dc5cc6a3fe010a4b63352 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Tue, 27 Feb 2018 18:10:36 -0800
-Subject: [PATCH 7/8] wined3d: Add segregated free bins to complement
+Subject: [PATCH 7/9] wined3d: Add segregated free bins to complement
  rbtree-backed free list.
 
 ---
