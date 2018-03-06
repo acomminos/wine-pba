@@ -1,4 +1,4 @@
-From 02fd25f43a3176a9cac6f64136c04ae1b2e9be6d Mon Sep 17 00:00:00 2001
+From 011217a7d6e91c6bc19f49b3b41d014a4c435009 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Mon, 5 Mar 2018 15:38:35 -0800
 Subject: [PATCH 1/2] wined3d: Initial implementation of a persistent mapped
@@ -7,13 +7,14 @@ Subject: [PATCH 1/2] wined3d: Initial implementation of a persistent mapped
 ---
  dlls/wined3d-csmt/Makefile.in  |   1 +
  dlls/wined3d/Makefile.in       |   1 +
- dlls/wined3d/buffer_heap.c     | 506 +++++++++++++++++++++++++++++++++++++++++
- dlls/wined3d/device.c          |  46 ++++
+ dlls/wined3d/buffer_heap.c     | 508 +++++++++++++++++++++++++++++++++++++++++
+ dlls/wined3d/cs.c              |   9 +
+ dlls/wined3d/device.c          |  52 +++++
  dlls/wined3d/directx.c         |   3 +
  dlls/wined3d/query.c           |   2 +-
  dlls/wined3d/wined3d_gl.h      |   1 +
- dlls/wined3d/wined3d_private.h |  67 +++++-
- 8 files changed, 623 insertions(+), 4 deletions(-)
+ dlls/wined3d/wined3d_private.h |  68 +++++-
+ 9 files changed, 641 insertions(+), 4 deletions(-)
  create mode 100644 dlls/wined3d/buffer_heap.c
 
 diff --git a/dlls/wined3d-csmt/Makefile.in b/dlls/wined3d-csmt/Makefile.in
@@ -42,10 +43,10 @@ index b850ba6872..52ef8666fb 100644
  	device.c \
 diff --git a/dlls/wined3d/buffer_heap.c b/dlls/wined3d/buffer_heap.c
 new file mode 100644
-index 0000000000..510b506b5f
+index 0000000000..b133bd6893
 --- /dev/null
 +++ b/dlls/wined3d/buffer_heap.c
-@@ -0,0 +1,506 @@
+@@ -0,0 +1,508 @@
 +/*
 + * Copyright 2018 Andrew Comminos
 + *
@@ -236,8 +237,6 @@ index 0000000000..510b506b5f
 +
 +    object->fenced_head = object->fenced_tail = NULL;
 +    object->alignment = alignment;
-+    // FIXME(acomminos): make this externally declared
-+    object->pending_fenced_threshold_bytes = 16 * 1024 * 1024;
 +    InitializeCriticalSection(&object->temp_lock);
 +
 +    initial_elem = element_new(0, size);
@@ -358,55 +357,59 @@ index 0000000000..510b506b5f
 +        bin->tail = elem;
 +    }
 +
-+    heap->pending_fenced_bytes += range.size;
-+    if (heap->pending_fenced_bytes >= heap->pending_fenced_threshold_bytes)
-+    {
-+        // TODO(acomminos): break this out into a separate function
-+        struct wined3d_buffer_heap_fenced_element *fenced_elem;
-+        struct wined3d_fence *fence;
-+        HRESULT hr;
-+
-+        if (FAILED(hr = wined3d_fence_create(device, &fence)))
-+        {
-+            ERR("Failed to create fence.\n");
-+            return hr;
-+        }
-+
-+        fenced_elem = fenced_element_new(heap->pending_fenced_bins, fence);
-+        if (!fenced_elem)
-+            return E_OUTOFMEMORY;
-+
-+        TRACE_(d3d_perf)("Dispatching fenced buffer set.\n");
-+        heap->pending_fenced_bytes = 0;
-+        memset(&heap->pending_fenced_bins, 0, sizeof(heap->pending_fenced_bins));
-+
-+        // Append to end of fenced list, which works well if you assume that buffers
-+        // are freed in some ascending draw call ordering.
-+        if (!heap->fenced_head)
-+        {
-+            heap->fenced_head = fenced_elem;
-+            heap->fenced_tail = fenced_elem;
-+        }
-+        else
-+        {
-+            heap->fenced_tail->next = fenced_elem;
-+            heap->fenced_tail = fenced_elem;
-+        }
-+
-+        wined3d_fence_issue(fence, device);
-+    }
-+
 +    return WINED3D_OK;
 +}
 +
-+HRESULT wined3d_buffer_heap_cs_poll_fences(struct wined3d_buffer_heap *heap, struct wined3d_device *device)
++HRESULT wined3d_buffer_heap_cs_fence_issue(struct wined3d_buffer_heap *heap, struct wined3d_device *device)
++{
++    struct wined3d_buffer_heap_fenced_element *fenced_elem;
++    struct wined3d_fence *fence;
++    HRESULT hr;
++
++    if (heap->fenced_head)
++    {
++        // XXX(acomminos): double or triple buffer this?
++        wined3d_buffer_heap_cs_fence_wait(heap, device);
++    }
++
++    if (FAILED(hr = wined3d_fence_create(device, &fence)))
++    {
++        ERR("Failed to create fence.\n");
++        return hr;
++    }
++
++    fenced_elem = fenced_element_new(heap->pending_fenced_bins, fence);
++    if (!fenced_elem)
++        return E_OUTOFMEMORY;
++
++    TRACE_(d3d_perf)("Dispatching fenced buffer set.\n");
++    memset(&heap->pending_fenced_bins, 0, sizeof(heap->pending_fenced_bins));
++
++    // Append to end of fenced list, which works well if you assume that buffers
++    // are freed in some ascending draw call ordering.
++    if (!heap->fenced_head)
++    {
++        heap->fenced_head = fenced_elem;
++        heap->fenced_tail = fenced_elem;
++    }
++    else
++    {
++        heap->fenced_tail->next = fenced_elem;
++        heap->fenced_tail = fenced_elem;
++    }
++
++    wined3d_fence_issue(fence, device);
++    return WINED3D_OK;
++}
++
++HRESULT wined3d_buffer_heap_cs_fence_wait(struct wined3d_buffer_heap *heap, struct wined3d_device *device)
 +{
 +    enum wined3d_fence_result res;
 +    struct wined3d_buffer_heap_fenced_element *elem = heap->fenced_head;
 +    if (!elem)
 +        return WINED3D_OK;
 +
-+    res = wined3d_fence_test(elem->fence, device, 0);
++    res = wined3d_fence_wait(elem->fence, device);
 +    switch (res)
 +    {
 +        case WINED3D_FENCE_OK:
@@ -552,11 +555,31 @@ index 0000000000..510b506b5f
 +
 +    return WINED3D_OK;
 +}
+diff --git a/dlls/wined3d/cs.c b/dlls/wined3d/cs.c
+index 3a7c95ddd8..50a4d041cd 100644
+--- a/dlls/wined3d/cs.c
++++ b/dlls/wined3d/cs.c
+@@ -472,6 +472,15 @@ static void wined3d_cs_exec_present(struct wined3d_cs *cs, const void *data)
+     }
+ 
+     InterlockedDecrement(&cs->pending_presents);
++
++    // FIXME(acomminos): is this the right place to put double-buffered frame
++    //                   timing based logic?
++    // FIXME(acomminos): this conditional sucks, replace with fancier feature check
++    if (cs->device->wo_buffer_heap && cs->device->cb_buffer_heap)
++    {
++        wined3d_buffer_heap_cs_fence_issue(cs->device->wo_buffer_heap, cs->device);
++        wined3d_buffer_heap_cs_fence_issue(cs->device->cb_buffer_heap, cs->device);
++    }
+ }
+ 
+ void wined3d_cs_emit_present(struct wined3d_cs *cs, struct wined3d_swapchain *swapchain,
 diff --git a/dlls/wined3d/device.c b/dlls/wined3d/device.c
-index e2b27e0cf4..199adb5cc3 100644
+index e2b27e0cf4..785841a062 100644
 --- a/dlls/wined3d/device.c
 +++ b/dlls/wined3d/device.c
-@@ -833,6 +833,47 @@ static void destroy_default_samplers(struct wined3d_device *device, struct wined
+@@ -833,6 +833,53 @@ static void destroy_default_samplers(struct wined3d_device *device, struct wined
      device->null_sampler = NULL;
  }
  
@@ -564,31 +587,37 @@ index e2b27e0cf4..199adb5cc3 100644
 +static void create_buffer_heap(struct wined3d_device *device, struct wined3d_context *context)
 +{
 +    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
-+    // TODO(acomminos): check if ARB_buffer_storage is supported, first-
-+    //                  possibly make wined3d_buffer_heap_create fail.
 +    // TODO(acomminos): kill this magic number. perhaps base on vram.
 +    GLsizeiptr geo_heap_size = 512 * 1024 * 1024;
++    // We choose a constant buffer size of 128MB, the same as NVIDIA claims to
++    // use in their Direct3D driver for discarded constant buffers.
 +    GLsizeiptr cb_heap_size = 128 * 1024 * 1024;
-+
 +    GLint ub_alignment;
-+    gl_info->gl_ops.gl.p_glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &ub_alignment);
-+
-+    // Align constant buffer heap size, in case GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT isn't a power of two (for some reason).
-+    cb_heap_size -= cb_heap_size % ub_alignment;
-+
 +    HRESULT hr;
-+    if (FAILED(hr = wined3d_buffer_heap_create(context, geo_heap_size, 0, TRUE, &device->wo_buffer_heap)))
-+    {
-+        ERR("Failed to create write-only persistent buffer heap, hr %#x.\n", hr);
-+    }
 +
-+    // TODO(acomminos): can likely use a way smaller heap for CBs by querying limits
-+    if (FAILED(hr = wined3d_buffer_heap_create(context, cb_heap_size, ub_alignment, TRUE, &device->cb_buffer_heap)))
++    if (gl_info->supported[ARB_BUFFER_STORAGE])
 +    {
-+        ERR("Failed to create persistent buffer heap for constant buffers, hr %#x.\n", hr);
-+    }
++        gl_info->gl_ops.gl.p_glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &ub_alignment);
 +
-+    FIXME("Initialized wine-pba (geo_heap_size: %lld, cb_heap_size: %lld, ub_align: %d)\n", geo_heap_size, cb_heap_size, ub_alignment);
++        // Align constant buffer heap size, in case GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT isn't a power of two (for some reason).
++        cb_heap_size -= cb_heap_size % ub_alignment;
++
++        if (FAILED(hr = wined3d_buffer_heap_create(context, geo_heap_size, 0, TRUE, &device->wo_buffer_heap)))
++        {
++            ERR("Failed to create write-only persistent buffer heap, hr %#x.\n", hr);
++        }
++
++        if (FAILED(hr = wined3d_buffer_heap_create(context, cb_heap_size, ub_alignment, TRUE, &device->cb_buffer_heap)))
++        {
++            ERR("Failed to create persistent buffer heap for constant buffers, hr %#x.\n", hr);
++        }
++
++        FIXME("Initialized PBA (geo_heap_size: %ld, cb_heap_size: %ld, ub_align: %d)\n", geo_heap_size, cb_heap_size, ub_alignment);
++    }
++    else
++    {
++        FIXME("Not using PBA, ARB_buffer_storage unsupported.\n");
++    }
 +}
 +
 +/* Context activation is done by the caller. */
@@ -604,7 +633,7 @@ index e2b27e0cf4..199adb5cc3 100644
  static LONG fullscreen_style(LONG style)
  {
      /* Make sure the window is managed, otherwise we won't get keyboard input. */
-@@ -997,6 +1038,8 @@ static void wined3d_device_delete_opengl_contexts_cs(void *object)
+@@ -997,6 +1044,8 @@ static void wined3d_device_delete_opengl_contexts_cs(void *object)
      device->shader_backend->shader_free_private(device);
      destroy_dummy_textures(device, context);
      destroy_default_samplers(device, context);
@@ -613,7 +642,7 @@ index e2b27e0cf4..199adb5cc3 100644
      context_release(context);
  
      while (device->context_count)
-@@ -1045,6 +1088,9 @@ static void wined3d_device_create_primary_opengl_context_cs(void *object)
+@@ -1045,6 +1094,9 @@ static void wined3d_device_create_primary_opengl_context_cs(void *object)
      context = context_acquire(device, target, 0);
      create_dummy_textures(device, context);
      create_default_samplers(device, context);
@@ -624,16 +653,23 @@ index e2b27e0cf4..199adb5cc3 100644
  }
  
 diff --git a/dlls/wined3d/directx.c b/dlls/wined3d/directx.c
-index 8720fc7ad6..03d62f694f 100644
+index 8720fc7ad6..46c6a59536 100644
 --- a/dlls/wined3d/directx.c
 +++ b/dlls/wined3d/directx.c
-@@ -2714,6 +2714,9 @@ static void load_gl_funcs(struct wined3d_gl_info *gl_info)
+@@ -111,6 +111,7 @@ static const struct wined3d_extension_map gl_extension_map[] =
+     /* ARB */
+     {"GL_ARB_base_instance",                ARB_BASE_INSTANCE             },
+     {"GL_ARB_blend_func_extended",          ARB_BLEND_FUNC_EXTENDED       },
++    {"GL_ARB_buffer_storage",               ARB_BUFFER_STORAGE            },
+     {"GL_ARB_clear_buffer_object",          ARB_CLEAR_BUFFER_OBJECT       },
+     {"GL_ARB_clear_texture",                ARB_CLEAR_TEXTURE             },
+     {"GL_ARB_clip_control",                 ARB_CLIP_CONTROL              },
+@@ -2714,6 +2715,8 @@ static void load_gl_funcs(struct wined3d_gl_info *gl_info)
      /* GL_ARB_blend_func_extended */
      USE_GL_FUNC(glBindFragDataLocationIndexed)
      USE_GL_FUNC(glGetFragDataIndex)
 +    /* GL_ARB_buffer_storage */
 +    USE_GL_FUNC(glBufferStorage)
-+    USE_GL_FUNC(glNamedBufferStorage)
      /* GL_ARB_clear_buffer_object */
      USE_GL_FUNC(glClearBufferData)
      USE_GL_FUNC(glClearBufferSubData)
@@ -663,7 +699,7 @@ index 87283c850e..7626864ef2 100644
      ARB_CLEAR_TEXTURE,
      ARB_CLIP_CONTROL,
 diff --git a/dlls/wined3d/wined3d_private.h b/dlls/wined3d/wined3d_private.h
-index 8aa61d811f..4120b6514c 100644
+index 8aa61d811f..3d535f4e17 100644
 --- a/dlls/wined3d/wined3d_private.h
 +++ b/dlls/wined3d/wined3d_private.h
 @@ -1712,6 +1712,9 @@ void wined3d_fence_destroy(struct wined3d_fence *fence) DECLSPEC_HIDDEN;
@@ -700,7 +736,7 @@ index 8aa61d811f..4120b6514c 100644
  enum wined3d_cs_queue_id
  {
      WINED3D_CS_QUEUE_DEFAULT = 0,
-@@ -3692,12 +3705,60 @@ enum wined3d_buffer_conversion_type
+@@ -3692,12 +3705,61 @@ enum wined3d_buffer_conversion_type
      CONV_POSITIONT,
  };
  
@@ -736,8 +772,6 @@ index 8aa61d811f..4120b6514c 100644
 +
 +    // Elements that need to be fenced, but haven't reached the required size.
 +    struct wined3d_buffer_heap_bin_set pending_fenced_bins;
-+    GLsizeiptr pending_fenced_bytes; // Number of free bytes in the active fenced region.
-+    GLsizeiptr pending_fenced_threshold_bytes; // Number of bytes required before fencing.
 +
 +    // List of sets of buffers behind a common fence, in FIFO order.
 +    struct wined3d_buffer_heap_fenced_element *fenced_head;
@@ -753,11 +787,14 @@ index 8aa61d811f..4120b6514c 100644
 +HRESULT wined3d_buffer_heap_free(struct wined3d_buffer_heap *heap, struct wined3d_map_range range) DECLSPEC_HIDDEN;
 +// Enqueues a buffer segment to return to the heap once its fence has been signaled.
 +HRESULT wined3d_buffer_heap_free_fenced(struct wined3d_buffer_heap *heap, struct wined3d_device *device, struct wined3d_map_range range) DECLSPEC_HIDDEN;
-+// Moves a buffers with a signaled fence from the fenced list to the free list.
-+// Must be executed on the CS thread.
-+HRESULT wined3d_buffer_heap_cs_poll_fences(struct wined3d_buffer_heap *heap, struct wined3d_device *device) DECLSPEC_HIDDEN;
-+// Performs deferred coalescing of fenced buffers. To be called when the CS
-+// thread is idle, or under memory pressure.
++// Issues a fence for the current set of pending fenced buffers.
++// Double-buffered: if the last fence issued has not yet been triggered, waits
++// on it.
++HRESULT wined3d_buffer_heap_cs_fence_issue(struct wined3d_buffer_heap *heap, struct wined3d_device *device) DECLSPEC_HIDDEN;
++// Waits on the next issued fence in FIFO order. Frees the fenced buffers after
++// the fence has been triggered.
++HRESULT wined3d_buffer_heap_cs_fence_wait(struct wined3d_buffer_heap *heap, struct wined3d_device *device) DECLSPEC_HIDDEN;
++// Performs deferred coalescing of buffers. To be called under memory pressure.
 +// Outputs the number of coalesced regions in `num_coalesced`.
 +HRESULT wined3d_buffer_heap_deferred_coalesce(struct wined3d_buffer_heap *heap, int *num_coalesced) DECLSPEC_HIDDEN;
 +
