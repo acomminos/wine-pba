@@ -175,6 +175,5 @@ index bed39dbc5f..100b3e34d8 100644
          if (desc->flags & (WINED3D_VIEW_BUFFER_COUNTER | WINED3D_VIEW_BUFFER_APPEND))
          {
              static const GLuint initial_value = 0;
--- 
+--
 2.16.2
-

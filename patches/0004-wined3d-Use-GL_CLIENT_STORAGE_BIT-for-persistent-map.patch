@@ -21,6 +21,5 @@ index b133bd6893..75f84b0088 100644
  
      // TODO(acomminos): where should we be checking for errors here?
      GL_EXTCALL(glGenBuffers(1, &object->buffer_object));
--- 
-2.16.2
-
+--
+2.13.6
