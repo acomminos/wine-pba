@@ -1,4 +1,4 @@
-From a8b2300b9ab2c1c061a7459c23179cb1b8bdb7c9 Mon Sep 17 00:00:00 2001
+From 6d2e04a5aeab1e3dc238b548a3f90986da4b5e1e Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Mon, 5 Mar 2018 15:39:11 -0800
 Subject: [PATCH 2/2] wined3d: Add support for backing dynamic wined3d_buffer
@@ -7,13 +7,13 @@ Subject: [PATCH 2/2] wined3d: Add support for backing dynamic wined3d_buffer
 ---
  dlls/wined3d/buffer.c          | 220 ++++++++++++++++++++++++++++++++++++++++-
  dlls/wined3d/context.c         |   6 +-
- dlls/wined3d/cs.c              |  68 ++++++++++++-
+ dlls/wined3d/cs.c              |  60 ++++++++++-
  dlls/wined3d/resource.c        |  18 +++-
  dlls/wined3d/state.c           |  17 +++-
  dlls/wined3d/texture.c         |  13 +++
  dlls/wined3d/utils.c           |   1 +
  dlls/wined3d/wined3d_private.h |  11 +++
- 8 files changed, 344 insertions(+), 10 deletions(-)
+ 8 files changed, 336 insertions(+), 10 deletions(-)
 
 diff --git a/dlls/wined3d/buffer.c b/dlls/wined3d/buffer.c
 index cae7ef8788..ad057b7fba 100644
@@ -382,7 +382,7 @@ index 0e2e68b4b0..eae2c3a79d 100644
              idx_data = index_buffer->resource.heap_memory;
          }
 diff --git a/dlls/wined3d/cs.c b/dlls/wined3d/cs.c
-index 50a4d041cd..b978413198 100644
+index 50a4d041cd..e61b8dedbb 100644
 --- a/dlls/wined3d/cs.c
 +++ b/dlls/wined3d/cs.c
 @@ -73,6 +73,7 @@ enum wined3d_cs_op
@@ -487,21 +487,6 @@ index 50a4d041cd..b978413198 100644
  };
  
  #if defined(STAGING_CSMT)
-@@ -2740,6 +2796,14 @@ static void poll_queries(struct wined3d_cs *cs)
-         list_init(&query->poll_list_entry);
-         InterlockedIncrement(&query->counter_retrieved);
-     }
-+
-+    // Poll for discarded persistent buffers whose fences have been triggered
-+    // here to avoid excessive VRAM consumption.
-+    // XXX(acomminos): clean this up, integrate with prior section.
-+    if (cs->device->wo_buffer_heap)
-+        wined3d_buffer_heap_cs_poll_fences(cs->device->wo_buffer_heap, cs->device);
-+    if (cs->device->cb_buffer_heap)
-+        wined3d_buffer_heap_cs_poll_fences(cs->device->cb_buffer_heap, cs->device);
- }
- 
- static void wined3d_cs_wait_event(struct wined3d_cs *cs)
 diff --git a/dlls/wined3d/resource.c b/dlls/wined3d/resource.c
 index 8b7f17bb6b..02d469bc20 100644
 --- a/dlls/wined3d/resource.c
