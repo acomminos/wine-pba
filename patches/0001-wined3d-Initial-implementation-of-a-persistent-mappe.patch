@@ -1,7 +1,7 @@
 From 1f69076549bf2351eb6d8d885b35a46b4dc69813 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Mon, 5 Mar 2018 15:38:35 -0800
-Subject: [PATCH 1/5] wined3d: Initial implementation of a persistent mapped
+Subject: [PATCH 1/6] wined3d: Initial implementation of a persistent mapped
  buffer allocator.
 
 ---
