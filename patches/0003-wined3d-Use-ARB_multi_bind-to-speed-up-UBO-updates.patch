@@ -1,4 +1,4 @@
-From d64aafc0ede047d1eff93ee7aa77411c0d27aa21 Mon Sep 17 00:00:00 2001
+From d8f54b1fedbbe64ebc5c08ff107408f454794f71 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Mon, 5 Mar 2018 20:28:34 -0800
 Subject: [PATCH 3/5] wined3d: Use ARB_multi_bind to speed up UBO updates.

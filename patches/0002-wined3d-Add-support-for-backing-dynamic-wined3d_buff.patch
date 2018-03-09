@@ -1,4 +1,4 @@
-From 6d2e04a5aeab1e3dc238b548a3f90986da4b5e1e Mon Sep 17 00:00:00 2001
+From af82b8e867af940f7ec68998a797aa5d7dfc540a Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Mon, 5 Mar 2018 15:39:11 -0800
 Subject: [PATCH 2/5] wined3d: Add support for backing dynamic wined3d_buffer
@@ -16,7 +16,7 @@ Subject: [PATCH 2/5] wined3d: Add support for backing dynamic wined3d_buffer
  8 files changed, 336 insertions(+), 10 deletions(-)
 
 diff --git a/dlls/wined3d/buffer.c b/dlls/wined3d/buffer.c
-index cae7ef8788..ad057b7fba 100644
+index cae7ef8788..e7a0f59a67 100644
 --- a/dlls/wined3d/buffer.c
 +++ b/dlls/wined3d/buffer.c
 @@ -28,12 +28,14 @@
@@ -322,12 +322,11 @@ index cae7ef8788..ad057b7fba 100644
  {
      if (sub_resource_idx)
      {
-@@ -1318,7 +1514,9 @@ static const struct wined3d_resource_ops buffer_resource_ops =
-     buffer_unload,
+@@ -1319,6 +1515,8 @@ static const struct wined3d_resource_ops buffer_resource_ops =
      buffer_resource_sub_resource_map,
      buffer_resource_sub_resource_map_info,
-+    buffer_resource_sub_resource_map_cs,
      buffer_resource_sub_resource_unmap,
++    buffer_resource_sub_resource_map_cs,
 +    buffer_resource_sub_resource_unmap_cs,
  };
  
@@ -576,7 +575,7 @@ index 2f506c36d1..6f7805b8bd 100644
      checkGLcall("bind constant buffers");
  }
 diff --git a/dlls/wined3d/texture.c b/dlls/wined3d/texture.c
-index e6af0c7508..8ca1ee7158 100644
+index e6af0c7508..7260f902cf 100644
 --- a/dlls/wined3d/texture.c
 +++ b/dlls/wined3d/texture.c
 @@ -2301,6 +2301,12 @@ static void wined3d_texture_unload(struct wined3d_resource *resource)
@@ -604,12 +603,11 @@ index e6af0c7508..8ca1ee7158 100644
  {
      struct wined3d_texture_sub_resource *sub_resource;
      struct wined3d_device *device = resource->device;
-@@ -2512,7 +2523,9 @@ static const struct wined3d_resource_ops texture_resource_ops =
-     wined3d_texture_unload,
+@@ -2513,6 +2524,8 @@ static const struct wined3d_resource_ops texture_resource_ops =
      texture_resource_sub_resource_map,
      texture_resource_sub_resource_map_info,
-+    texture_resource_sub_resource_map_cs,
      texture_resource_sub_resource_unmap,
++    texture_resource_sub_resource_map_cs,
 +    texture_resource_sub_resource_unmap_cs,
  };
  
@@ -627,7 +625,7 @@ index b8b7880501..62758ae056 100644
      if (location)
          FIXME("Unrecognized location flag(s) %#x.\n", location);
 diff --git a/dlls/wined3d/wined3d_private.h b/dlls/wined3d/wined3d_private.h
-index 3d535f4e17..6d32a368a2 100644
+index 3d535f4e17..b3fd0136ff 100644
 --- a/dlls/wined3d/wined3d_private.h
 +++ b/dlls/wined3d/wined3d_private.h
 @@ -1470,6 +1470,7 @@ struct wined3d_bo_address
@@ -638,13 +636,12 @@ index 3d535f4e17..6d32a368a2 100644
  };
  
  struct wined3d_const_bo_address
-@@ -3046,7 +3047,10 @@ struct wined3d_resource_ops
-             struct wined3d_map_desc *map_desc, const struct wined3d_box *box, DWORD flags);
+@@ -3047,6 +3048,9 @@ struct wined3d_resource_ops
      HRESULT (*resource_map_info)(struct wined3d_resource *resource, unsigned int sub_resource_idx,
              struct wined3d_map_info *info, DWORD flags);
+     HRESULT (*resource_sub_resource_unmap)(struct wined3d_resource *resource, unsigned int sub_resource_idx);
 +    HRESULT (*resource_sub_resource_map_cs)(struct wined3d_resource *resource, unsigned int sub_resource_idx,
 +            struct wined3d_map_desc *map_desc, const struct wined3d_box *box, DWORD flags);
-     HRESULT (*resource_sub_resource_unmap)(struct wined3d_resource *resource, unsigned int sub_resource_idx);
 +    HRESULT (*resource_sub_resource_unmap_cs)(struct wined3d_resource *resource, unsigned int sub_resource_idx);
  };
  
