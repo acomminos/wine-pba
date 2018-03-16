@@ -1,7 +1,7 @@
 From d8f54b1fedbbe64ebc5c08ff107408f454794f71 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Mon, 5 Mar 2018 20:28:34 -0800
-Subject: [PATCH 3/7] wined3d: Use ARB_multi_bind to speed up UBO updates.
+Subject: [PATCH 3/9] wined3d: Use ARB_multi_bind to speed up UBO updates.
 
 More frequent UBO remaps as a result of the persistent buffer allocator
 causes glBindBufferRange to be a bottleneck. Using ARB_multi_bind
