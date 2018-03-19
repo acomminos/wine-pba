@@ -1,4 +1,4 @@
-From d8f54b1fedbbe64ebc5c08ff107408f454794f71 Mon Sep 17 00:00:00 2001
+From 5b7c37d7091ebee26fe9ca21b1459c422cda9dde Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Mon, 5 Mar 2018 20:28:34 -0800
 Subject: [PATCH 3/9] wined3d: Use ARB_multi_bind to speed up UBO updates.
@@ -6,6 +6,8 @@ Subject: [PATCH 3/9] wined3d: Use ARB_multi_bind to speed up UBO updates.
 More frequent UBO remaps as a result of the persistent buffer allocator
 causes glBindBufferRange to be a bottleneck. Using ARB_multi_bind
 massively reduces state change overhead.
+
+Signed-off-by: Firerat <firer4t@googlemail.com>
 ---
  dlls/wined3d/directx.c    |  4 ++++
  dlls/wined3d/state.c      | 46 +++++++++++++++++++++++++++++++++++++++-------
@@ -13,7 +15,7 @@ massively reduces state change overhead.
  3 files changed, 44 insertions(+), 7 deletions(-)
 
 diff --git a/dlls/wined3d/directx.c b/dlls/wined3d/directx.c
-index 46c6a59536..8789a501ec 100644
+index 2258eca300..f0881fbea6 100644
 --- a/dlls/wined3d/directx.c
 +++ b/dlls/wined3d/directx.c
 @@ -149,6 +149,7 @@ static const struct wined3d_extension_map gl_extension_map[] =
@@ -24,7 +26,7 @@ index 46c6a59536..8789a501ec 100644
      {"GL_ARB_multisample",                  ARB_MULTISAMPLE               },
      {"GL_ARB_multitexture",                 ARB_MULTITEXTURE              },
      {"GL_ARB_occlusion_query",              ARB_OCCLUSION_QUERY           },
-@@ -2796,6 +2797,8 @@ static void load_gl_funcs(struct wined3d_gl_info *gl_info)
+@@ -2798,6 +2799,8 @@ static void load_gl_funcs(struct wined3d_gl_info *gl_info)
      /* GL_ARB_map_buffer_range */
      USE_GL_FUNC(glFlushMappedBufferRange)
      USE_GL_FUNC(glMapBufferRange)
@@ -33,7 +35,7 @@ index 46c6a59536..8789a501ec 100644
      /* GL_ARB_multisample */
      USE_GL_FUNC(glSampleCoverageARB)
      /* GL_ARB_multitexture */
-@@ -3973,6 +3976,7 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter,
+@@ -3975,6 +3978,7 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter,
          {ARB_TEXTURE_VIEW,                 MAKEDWORD_VERSION(4, 3)},
  
          {ARB_CLEAR_TEXTURE,                MAKEDWORD_VERSION(4, 4)},

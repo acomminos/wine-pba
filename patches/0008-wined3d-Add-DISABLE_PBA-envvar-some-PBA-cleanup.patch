@@ -1,8 +1,9 @@
-From 8af55b60fa87bb0fb21afd17e3467253b53e61a1 Mon Sep 17 00:00:00 2001
+From cce26ea311a79e6c34fd3d2e41c182fba79ace63 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Thu, 15 Mar 2018 21:07:21 -0700
 Subject: [PATCH 8/9] wined3d: Add DISABLE_PBA envvar, some PBA cleanup.
 
+Signed-off-by: Firerat <firer4t@googlemail.com>
 ---
  dlls/wined3d/buffer.c          |  4 ++--
  dlls/wined3d/buffer_heap.c     | 34 ++++++++++++++++++++++++++--------
@@ -104,10 +105,10 @@ index 80670c515f..899aad9612 100644
  }
  
 diff --git a/dlls/wined3d/device.c b/dlls/wined3d/device.c
-index 785841a062..f4c9dc7bd6 100644
+index b5ce30121a..206b68cd9d 100644
 --- a/dlls/wined3d/device.c
 +++ b/dlls/wined3d/device.c
-@@ -837,16 +837,27 @@ static void destroy_default_samplers(struct wined3d_device *device, struct wined
+@@ -846,16 +846,27 @@ static void destroy_default_samplers(struct wined3d_device *device, struct wined
  static void create_buffer_heap(struct wined3d_device *device, struct wined3d_context *context)
  {
      const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
@@ -143,7 +144,7 @@ index 785841a062..f4c9dc7bd6 100644
          gl_info->gl_ops.gl.p_glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &ub_alignment);
  
          // Align constant buffer heap size, in case GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT isn't a power of two (for some reason).
-@@ -855,19 +866,22 @@ static void create_buffer_heap(struct wined3d_device *device, struct wined3d_con
+@@ -864,19 +875,22 @@ static void create_buffer_heap(struct wined3d_device *device, struct wined3d_con
          if (FAILED(hr = wined3d_buffer_heap_create(context, geo_heap_size, 0, TRUE, &device->wo_buffer_heap)))
          {
              ERR("Failed to create write-only persistent buffer heap, hr %#x.\n", hr);
@@ -184,7 +185,7 @@ index f3ca1630e5..5ea79b6e4a 100644
  {
      const struct wined3d_gl_info *gl_info;
 diff --git a/dlls/wined3d/wined3d_private.h b/dlls/wined3d/wined3d_private.h
-index 0114444943..63f004d57e 100644
+index 02b9fd6967..b7f6d43bfe 100644
 --- a/dlls/wined3d/wined3d_private.h
 +++ b/dlls/wined3d/wined3d_private.h
 @@ -1713,9 +1713,6 @@ void wined3d_fence_destroy(struct wined3d_fence *fence) DECLSPEC_HIDDEN;
@@ -197,7 +198,7 @@ index 0114444943..63f004d57e 100644
  
  /* Direct3D terminology with little modifications. We do not have an issued
   * state because only the driver knows about it, but we have a created state
-@@ -2946,7 +2943,8 @@ struct wined3d_device
+@@ -2952,7 +2949,8 @@ struct wined3d_device
      BYTE inScene : 1;                   /* A flag to check for proper BeginScene / EndScene call pairs */
      BYTE softwareVertexProcessing : 1;  /* process vertex shaders using software or hardware */
      BYTE filter_messages : 1;
