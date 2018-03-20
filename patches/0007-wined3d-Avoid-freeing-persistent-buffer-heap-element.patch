@@ -6,8 +6,6 @@ Subject: [PATCH 7/9] wined3d: Avoid freeing persistent buffer heap elements
 
 Using HeapFree is expensive, especially when we don't have our buffers
 for long.
-
-Signed-off-by: Firerat <firer4t@googlemail.com>
 ---
  dlls/wined3d/buffer.c          | 29 +++++++++++----------
  dlls/wined3d/buffer_heap.c     | 57 ++++++++++++++++++------------------------

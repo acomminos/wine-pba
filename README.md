@@ -9,6 +9,6 @@ Several related changes are included in the patchset as well:
 
 **This patchset is prototype-quality at the moment. If `ARB_buffer_storage` is not present, you're not going to have a good time.**
 
-Currently, these patches are based off wine-staging 3.3.
+Currently, these patches are based off wine-staging 3.4.
 
 [Details can be found here.](https://comminos.com/posts/2018-02-21-wined3d-profiling.html)

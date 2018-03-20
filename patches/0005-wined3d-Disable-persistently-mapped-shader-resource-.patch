@@ -4,7 +4,6 @@ Date: Thu, 8 Mar 2018 22:00:33 -0800
 Subject: [PATCH 5/9] wined3d: Disable persistently mapped shader resource
  buffers.
 
-Signed-off-by: Firerat <firer4t@googlemail.com>
 ---
  dlls/wined3d/buffer.c | 4 ++++
  1 file changed, 4 insertions(+)

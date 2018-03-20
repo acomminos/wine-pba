@@ -4,7 +4,6 @@ Date: Mon, 5 Mar 2018 15:38:35 -0800
 Subject: [PATCH 1/9] wined3d: Initial implementation of a persistent mapped
  buffer allocator.
 
-Signed-off-by: Firerat <firer4t@googlemail.com>
 ---
  dlls/wined3d-csmt/Makefile.in  |   1 +
  dlls/wined3d/Makefile.in       |   1 +

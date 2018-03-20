@@ -4,7 +4,6 @@ Date: Thu, 8 Mar 2018 22:42:03 -0800
 Subject: [PATCH 6/9] wined3d: Perform initial allocation of persistent buffers
  asynchronously.
 
-Signed-off-by: Firerat <firer4t@googlemail.com>
 ---
  dlls/wined3d/buffer.c | 30 ++++++++++++++++++++----------
  1 file changed, 20 insertions(+), 10 deletions(-)
