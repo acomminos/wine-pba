@@ -1,4 +1,4 @@
-From fc7907d5264c1606477f9287c949c3c8794859ec Mon Sep 17 00:00:00 2001
+From e894172d80b12b12481b26464397d3fef6bc45be Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Thu, 8 Mar 2018 23:01:50 -0800
 Subject: [PATCH 7/9] wined3d: Avoid freeing persistent buffer heap elements
@@ -235,10 +235,10 @@ index 75f84b0088..80670c515f 100644
      struct wined3d_buffer_heap_bin *bin = &heap->pending_fenced_bins.bins[bin_index];
  
 diff --git a/dlls/wined3d/context.c b/dlls/wined3d/context.c
-index eae2c3a79d..01aa53597f 100644
+index b5e80682ba..1071090554 100644
 --- a/dlls/wined3d/context.c
 +++ b/dlls/wined3d/context.c
-@@ -5005,9 +5005,9 @@ void draw_primitive(struct wined3d_device *device, const struct wined3d_state *s
+@@ -4980,9 +4980,9 @@ void draw_primitive(struct wined3d_device *device, const struct wined3d_state *s
      if (parameters->indexed)
      {
          struct wined3d_buffer *index_buffer = state->index_buffer;
@@ -251,7 +251,7 @@ index eae2c3a79d..01aa53597f 100644
          else if (!index_buffer->buffer_object || !stream_info->all_vbo)
          {
 diff --git a/dlls/wined3d/cs.c b/dlls/wined3d/cs.c
-index e61b8dedbb..d1f665d505 100644
+index fc3e569fae..7dc360363a 100644
 --- a/dlls/wined3d/cs.c
 +++ b/dlls/wined3d/cs.c
 @@ -444,7 +444,7 @@ struct wined3d_cs_discard_buffer
@@ -263,7 +263,7 @@ index e61b8dedbb..d1f665d505 100644
  };
  
  struct wined3d_cs_stop
-@@ -2496,14 +2496,14 @@ static void wined3d_cs_exec_discard_buffer(struct wined3d_cs *cs, const void *da
+@@ -2484,14 +2484,14 @@ static void wined3d_cs_exec_discard_buffer(struct wined3d_cs *cs, const void *da
      wined3d_resource_release(&op->buffer->resource);
  }
  
@@ -281,10 +281,10 @@ index e61b8dedbb..d1f665d505 100644
      wined3d_resource_acquire(&buffer->resource);
  
 diff --git a/dlls/wined3d/wined3d_private.h b/dlls/wined3d/wined3d_private.h
-index b3fd0136ff..0114444943 100644
+index f9ed0afb80..02b9fd6967 100644
 --- a/dlls/wined3d/wined3d_private.h
 +++ b/dlls/wined3d/wined3d_private.h
-@@ -3531,6 +3531,18 @@ struct wined3d_map_range
+@@ -3527,6 +3527,18 @@ struct wined3d_map_range
      GLsizeiptr size;
  };
  
@@ -303,7 +303,7 @@ index b3fd0136ff..0114444943 100644
  enum wined3d_cs_queue_id
  {
      WINED3D_CS_QUEUE_DEFAULT = 0,
-@@ -3677,7 +3689,7 @@ void wined3d_cs_emit_unload_resource(struct wined3d_cs *cs, struct wined3d_resou
+@@ -3673,7 +3685,7 @@ void wined3d_cs_emit_unload_resource(struct wined3d_cs *cs, struct wined3d_resou
  void wined3d_cs_emit_update_sub_resource(struct wined3d_cs *cs, struct wined3d_resource *resource,
          unsigned int sub_resource_idx, const struct wined3d_box *box, const void *data, unsigned int row_pitch,
          unsigned int slice_pitch) DECLSPEC_HIDDEN;
@@ -312,7 +312,7 @@ index b3fd0136ff..0114444943 100644
  void wined3d_cs_init_object(struct wined3d_cs *cs,
          void (*callback)(void *object), void *object) DECLSPEC_HIDDEN;
  HRESULT wined3d_cs_map(struct wined3d_cs *cs, struct wined3d_resource *resource, unsigned int sub_resource_idx,
-@@ -3711,7 +3723,6 @@ enum wined3d_buffer_conversion_type
+@@ -3707,7 +3719,6 @@ enum wined3d_buffer_conversion_type
      CONV_POSITIONT,
  };
  
@@ -320,7 +320,7 @@ index b3fd0136ff..0114444943 100644
  struct wined3d_buffer_heap_fenced_element;
  
  // Number of power-of-two buckets to populate.
-@@ -3750,11 +3761,11 @@ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr s
+@@ -3746,11 +3757,11 @@ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr s
  HRESULT wined3d_buffer_heap_destroy(struct wined3d_buffer_heap *heap, struct wined3d_context *context) DECLSPEC_HIDDEN;
  // Fetches a buffer from the heap of at least the given size.
  // Attempts to coalesce blocks under memory pressure.
@@ -335,7 +335,7 @@ index b3fd0136ff..0114444943 100644
  // Issues a fence for the current set of pending fenced buffers.
  // Double-buffered: if the last fence issued has not yet been triggered, waits
  // on it.
-@@ -3793,8 +3804,8 @@ struct wined3d_buffer
+@@ -3789,8 +3800,8 @@ struct wined3d_buffer
  
      /* persistent mapped buffer */
      struct wined3d_buffer_heap *buffer_heap;
