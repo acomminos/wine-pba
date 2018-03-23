@@ -1,0 +1,27 @@
+From 3b2b6c46f9365549e72a5031a26f777abd932163 Mon Sep 17 00:00:00 2001
+From: Andrew Comminos <andrew@comminos.com>
+Date: Fri, 23 Mar 2018 20:57:21 +0000
+Subject: [PATCH 01/10] STAGING wined3d-csmt: update Makefile.in for PBA
+
+Split from 0001-wined3d-Initial-implementation-of-a-persistent-mappe.patch
+
+Signed-off-by: Firerat <firer4t@googlemail.com>
+---
+ dlls/wined3d-csmt/Makefile.in | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/dlls/wined3d-csmt/Makefile.in b/dlls/wined3d-csmt/Makefile.in
+index 1d0458eb46..cb3a5484c6 100644
+--- a/dlls/wined3d-csmt/Makefile.in
++++ b/dlls/wined3d-csmt/Makefile.in
+@@ -8,6 +8,7 @@ C_SRCS = \
+ 	arb_program_shader.c \
+ 	ati_fragment_shader.c \
+ 	buffer.c \
++	buffer_heap.c \
+ 	context.c \
+ 	cs.c \
+ 	device.c \
+-- 
+2.16.2
+

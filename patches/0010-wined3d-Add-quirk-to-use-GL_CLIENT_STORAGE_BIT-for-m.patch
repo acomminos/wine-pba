@@ -1,7 +1,8 @@
-From a2326162cf4fb5601c0f296bfd1294a493912bce Mon Sep 17 00:00:00 2001
+From 444453ba7086e4377c8c24ab8e1bf6d1c3a67a8c Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Thu, 15 Mar 2018 21:22:06 -0700
-Subject: [PATCH 9/9] wined3d: Add quirk to use GL_CLIENT_STORAGE_BIT for mesa.
+Subject: [PATCH 10/10] wined3d: Add quirk to use GL_CLIENT_STORAGE_BIT for
+ mesa.
 
 ---
  dlls/wined3d/buffer_heap.c     | 15 ++++++++++++++-
@@ -36,7 +37,7 @@ index 899aad9612..9e8f2d799d 100644
      GL_EXTCALL(glGenBuffers(1, &object->buffer_object));
      checkGLcall("glGenBuffers");
 diff --git a/dlls/wined3d/directx.c b/dlls/wined3d/directx.c
-index 8789a501ec..f455ed54e1 100644
+index f0881fbea6..ff60f8866a 100644
 --- a/dlls/wined3d/directx.c
 +++ b/dlls/wined3d/directx.c
 @@ -947,6 +947,13 @@ static BOOL match_broken_viewport_subpixel_bits(const struct wined3d_gl_info *gl
@@ -80,7 +81,7 @@ index 8789a501ec..f455ed54e1 100644
  
  /* Certain applications (Steam) complain if we report an outdated driver version. In general,
 diff --git a/dlls/wined3d/wined3d_private.h b/dlls/wined3d/wined3d_private.h
-index 63f004d57e..96715261b1 100644
+index b7f6d43bfe..1f71a4538b 100644
 --- a/dlls/wined3d/wined3d_private.h
 +++ b/dlls/wined3d/wined3d_private.h
 @@ -75,6 +75,7 @@
