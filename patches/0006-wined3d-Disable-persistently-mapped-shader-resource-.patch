@@ -1,7 +1,7 @@
-From 55d24ee1cdc6de5dce2a2c1a5edc004c91361970 Mon Sep 17 00:00:00 2001
+From 2a5db57cb480190784cf99efd5bda6942d93faa5 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Thu, 8 Mar 2018 22:00:33 -0800
-Subject: [PATCH 5/9] wined3d: Disable persistently mapped shader resource
+Subject: [PATCH 06/10] wined3d: Disable persistently mapped shader resource
  buffers.
 
 ---

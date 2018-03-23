@@ -1,11 +1,10 @@
-From 6606f7d6b0011d1682fda9b07a8ae599b623117d Mon Sep 17 00:00:00 2001
+From 9a1296d50ca6572432df5043242dfac1dad1acdc Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Mon, 5 Mar 2018 15:38:35 -0800
-Subject: [PATCH 1/9] wined3d: Initial implementation of a persistent mapped
+Subject: [PATCH 02/10] wined3d: Initial implementation of a persistent mapped
  buffer allocator.
 
 ---
- dlls/wined3d-csmt/Makefile.in  |   1 +
  dlls/wined3d/Makefile.in       |   1 +
  dlls/wined3d/buffer_heap.c     | 508 +++++++++++++++++++++++++++++++++++++++++
  dlls/wined3d/cs.c              |   9 +
@@ -14,21 +13,9 @@ Subject: [PATCH 1/9] wined3d: Initial implementation of a persistent mapped
  dlls/wined3d/query.c           |   2 +-
  dlls/wined3d/wined3d_gl.h      |   1 +
  dlls/wined3d/wined3d_private.h |  68 +++++-
- 9 files changed, 641 insertions(+), 4 deletions(-)
+ 8 files changed, 640 insertions(+), 4 deletions(-)
  create mode 100644 dlls/wined3d/buffer_heap.c
 
-diff --git a/dlls/wined3d-csmt/Makefile.in b/dlls/wined3d-csmt/Makefile.in
-index 1d0458eb46..cb3a5484c6 100644
---- a/dlls/wined3d-csmt/Makefile.in
-+++ b/dlls/wined3d-csmt/Makefile.in
-@@ -8,6 +8,7 @@ C_SRCS = \
- 	arb_program_shader.c \
- 	ati_fragment_shader.c \
- 	buffer.c \
-+	buffer_heap.c \
- 	context.c \
- 	cs.c \
- 	device.c \
 diff --git a/dlls/wined3d/Makefile.in b/dlls/wined3d/Makefile.in
 index b850ba6872..52ef8666fb 100644
 --- a/dlls/wined3d/Makefile.in
