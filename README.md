@@ -9,6 +9,11 @@ Several related changes are included in the patchset as well:
 
 **This patchset is prototype-quality at the moment. If `ARB_buffer_storage` is not present, you're not going to have a good time.**
 
-Currently, these patches are based off wine-staging 3.3.
+Currently, these patches are based off wine-staging 3.4.
+Although not officially supported, you may have luck applying the patchset to wine-devel
+simply ignore the first patch patches/0001-STAGING-wined3d-csmt-update-Makefile.in-for-PBA.patch
 
 [Details can be found here.](https://comminos.com/posts/2018-02-21-wined3d-profiling.html)
+
+
+ 
