@@ -1,6 +1,6 @@
-From 08fc0e139509a6755489af3936ede49936896122 Mon Sep 17 00:00:00 2001
+From 56b69bee4b15f4a83565c8e1a2b4d063e90d1a5f Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
-Date: Tue, 6 Mar 2018 02:07:31 -0800
+Date: Sun, 1 Apr 2018 02:19:36 +0100
 Subject: [PATCH 4/9] wined3d: Use GL_CLIENT_STORAGE_BIT for persistent
  mappings.
 
@@ -9,7 +9,7 @@ Subject: [PATCH 4/9] wined3d: Use GL_CLIENT_STORAGE_BIT for persistent
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/dlls/wined3d/buffer_heap.c b/dlls/wined3d/buffer_heap.c
-index b133bd6893..75f84b0088 100644
+index b133bd6..75f84b0 100644
 --- a/dlls/wined3d/buffer_heap.c
 +++ b/dlls/wined3d/buffer_heap.c
 @@ -169,7 +169,7 @@ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr s
@@ -22,5 +22,5 @@ index b133bd6893..75f84b0088 100644
      // TODO(acomminos): where should we be checking for errors here?
      GL_EXTCALL(glGenBuffers(1, &object->buffer_object));
 -- 
-2.16.2
+2.16.3
 

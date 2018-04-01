@@ -1,6 +1,6 @@
-From 8af55b60fa87bb0fb21afd17e3467253b53e61a1 Mon Sep 17 00:00:00 2001
+From b4f47f3b6be1ea3fb92cadc06f608c0b51d0e454 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
-Date: Thu, 15 Mar 2018 21:07:21 -0700
+Date: Sun, 1 Apr 2018 02:28:50 +0100
 Subject: [PATCH 8/9] wined3d: Add DISABLE_PBA envvar, some PBA cleanup.
 
 ---
@@ -12,10 +12,10 @@ Subject: [PATCH 8/9] wined3d: Add DISABLE_PBA envvar, some PBA cleanup.
  5 files changed, 57 insertions(+), 27 deletions(-)
 
 diff --git a/dlls/wined3d/buffer.c b/dlls/wined3d/buffer.c
-index 74b3ba8abd..651d9a4360 100644
+index 4eaa6c7..c3d65b8 100644
 --- a/dlls/wined3d/buffer.c
 +++ b/dlls/wined3d/buffer.c
-@@ -1603,9 +1603,9 @@ static HRESULT buffer_init(struct wined3d_buffer *buffer, struct wined3d_device
+@@ -1601,9 +1601,9 @@ static HRESULT buffer_init(struct wined3d_buffer *buffer, struct wined3d_device
  
      if (buffer->resource.usage & WINED3DUSAGE_DYNAMIC)
      {
@@ -28,7 +28,7 @@ index 74b3ba8abd..651d9a4360 100644
          else if (bind_flags & WINED3D_BIND_SHADER_RESOURCE)
          {
 diff --git a/dlls/wined3d/buffer_heap.c b/dlls/wined3d/buffer_heap.c
-index 80670c515f..899aad9612 100644
+index 80670c5..899aad9 100644
 --- a/dlls/wined3d/buffer_heap.c
 +++ b/dlls/wined3d/buffer_heap.c
 @@ -25,6 +25,9 @@
@@ -104,10 +104,10 @@ index 80670c515f..899aad9612 100644
  }
  
 diff --git a/dlls/wined3d/device.c b/dlls/wined3d/device.c
-index 785841a062..f4c9dc7bd6 100644
+index 57958da..9a8bade 100644
 --- a/dlls/wined3d/device.c
 +++ b/dlls/wined3d/device.c
-@@ -837,16 +837,27 @@ static void destroy_default_samplers(struct wined3d_device *device, struct wined
+@@ -844,16 +844,27 @@ static void destroy_default_samplers(struct wined3d_device *device, struct wined
  static void create_buffer_heap(struct wined3d_device *device, struct wined3d_context *context)
  {
      const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
@@ -143,7 +143,7 @@ index 785841a062..f4c9dc7bd6 100644
          gl_info->gl_ops.gl.p_glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &ub_alignment);
  
          // Align constant buffer heap size, in case GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT isn't a power of two (for some reason).
-@@ -855,19 +866,22 @@ static void create_buffer_heap(struct wined3d_device *device, struct wined3d_con
+@@ -862,19 +873,22 @@ static void create_buffer_heap(struct wined3d_device *device, struct wined3d_con
          if (FAILED(hr = wined3d_buffer_heap_create(context, geo_heap_size, 0, TRUE, &device->wo_buffer_heap)))
          {
              ERR("Failed to create write-only persistent buffer heap, hr %#x.\n", hr);
@@ -171,7 +171,7 @@ index 785841a062..f4c9dc7bd6 100644
  
  /* Context activation is done by the caller. */
 diff --git a/dlls/wined3d/query.c b/dlls/wined3d/query.c
-index f3ca1630e5..5ea79b6e4a 100644
+index f3ca163..5ea79b6 100644
 --- a/dlls/wined3d/query.c
 +++ b/dlls/wined3d/query.c
 @@ -88,7 +88,7 @@ static BOOL wined3d_fence_supported(const struct wined3d_gl_info *gl_info)
@@ -184,7 +184,7 @@ index f3ca1630e5..5ea79b6e4a 100644
  {
      const struct wined3d_gl_info *gl_info;
 diff --git a/dlls/wined3d/wined3d_private.h b/dlls/wined3d/wined3d_private.h
-index 0114444943..63f004d57e 100644
+index 88233a3..25ffe45 100644
 --- a/dlls/wined3d/wined3d_private.h
 +++ b/dlls/wined3d/wined3d_private.h
 @@ -1713,9 +1713,6 @@ void wined3d_fence_destroy(struct wined3d_fence *fence) DECLSPEC_HIDDEN;
@@ -197,16 +197,16 @@ index 0114444943..63f004d57e 100644
  
  /* Direct3D terminology with little modifications. We do not have an issued
   * state because only the driver knows about it, but we have a created state
-@@ -2946,7 +2943,8 @@ struct wined3d_device
+@@ -2933,7 +2930,8 @@ struct wined3d_device
      BYTE inScene : 1;                   /* A flag to check for proper BeginScene / EndScene call pairs */
      BYTE softwareVertexProcessing : 1;  /* process vertex shaders using software or hardware */
      BYTE filter_messages : 1;
--    BYTE padding : 2;
+-    BYTE padding : 3;
 +    BYTE use_pba : 1;                   /* A flag to use the persistent buffer allocator for dynamic buffers. */
-+    BYTE padding : 1;
++    BYTE padding : 2;
  
      unsigned char           surface_alignment; /* Line Alignment of surfaces                      */
  
 -- 
-2.16.2
+2.16.3
 
