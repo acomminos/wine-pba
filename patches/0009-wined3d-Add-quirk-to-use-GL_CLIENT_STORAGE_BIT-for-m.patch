@@ -1,6 +1,6 @@
-From a2326162cf4fb5601c0f296bfd1294a493912bce Mon Sep 17 00:00:00 2001
+From 7cb44d0e1788b232aeb8a3b73f243d80a726d150 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
-Date: Thu, 15 Mar 2018 21:22:06 -0700
+Date: Sun, 1 Apr 2018 02:29:38 +0100
 Subject: [PATCH 9/9] wined3d: Add quirk to use GL_CLIENT_STORAGE_BIT for mesa.
 
 ---
@@ -10,7 +10,7 @@ Subject: [PATCH 9/9] wined3d: Add quirk to use GL_CLIENT_STORAGE_BIT for mesa.
  3 files changed, 34 insertions(+), 1 deletion(-)
 
 diff --git a/dlls/wined3d/buffer_heap.c b/dlls/wined3d/buffer_heap.c
-index 899aad9612..9e8f2d799d 100644
+index 899aad9..9e8f2d7 100644
 --- a/dlls/wined3d/buffer_heap.c
 +++ b/dlls/wined3d/buffer_heap.c
 @@ -165,7 +165,20 @@ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr s
@@ -36,10 +36,10 @@ index 899aad9612..9e8f2d799d 100644
      GL_EXTCALL(glGenBuffers(1, &object->buffer_object));
      checkGLcall("glGenBuffers");
 diff --git a/dlls/wined3d/directx.c b/dlls/wined3d/directx.c
-index 8789a501ec..f455ed54e1 100644
+index 2831baa..ee0d4c7 100644
 --- a/dlls/wined3d/directx.c
 +++ b/dlls/wined3d/directx.c
-@@ -947,6 +947,13 @@ static BOOL match_broken_viewport_subpixel_bits(const struct wined3d_gl_info *gl
+@@ -946,6 +946,13 @@ static BOOL match_broken_viewport_subpixel_bits(const struct wined3d_gl_info *gl
      return !wined3d_caps_gl_ctx_test_viewport_subpixel_bits(ctx);
  }
  
@@ -53,7 +53,7 @@ index 8789a501ec..f455ed54e1 100644
  static void quirk_apple_glsl_constants(struct wined3d_gl_info *gl_info)
  {
      /* MacOS needs uniforms for relative addressing offsets. This can accumulate to quite a few uniforms.
-@@ -1084,6 +1091,13 @@ static void quirk_broken_viewport_subpixel_bits(struct wined3d_gl_info *gl_info)
+@@ -1083,6 +1090,13 @@ static void quirk_broken_viewport_subpixel_bits(struct wined3d_gl_info *gl_info)
      }
  }
  
@@ -67,7 +67,7 @@ index 8789a501ec..f455ed54e1 100644
  struct driver_quirk
  {
      BOOL (*match)(const struct wined3d_gl_info *gl_info, struct wined3d_caps_gl_ctx *ctx,
-@@ -1180,6 +1194,11 @@ static const struct driver_quirk quirk_table[] =
+@@ -1179,6 +1193,11 @@ static const struct driver_quirk quirk_table[] =
          quirk_broken_viewport_subpixel_bits,
          "Nvidia viewport subpixel bits bug"
      },
@@ -80,7 +80,7 @@ index 8789a501ec..f455ed54e1 100644
  
  /* Certain applications (Steam) complain if we report an outdated driver version. In general,
 diff --git a/dlls/wined3d/wined3d_private.h b/dlls/wined3d/wined3d_private.h
-index 63f004d57e..96715261b1 100644
+index 25ffe45..55e6432 100644
 --- a/dlls/wined3d/wined3d_private.h
 +++ b/dlls/wined3d/wined3d_private.h
 @@ -75,6 +75,7 @@
@@ -92,5 +92,5 @@ index 63f004d57e..96715261b1 100644
  enum wined3d_ffp_idx
  {
 -- 
-2.16.2
+2.16.3
 
