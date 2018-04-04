@@ -1,7 +1,7 @@
 From b4f47f3b6be1ea3fb92cadc06f608c0b51d0e454 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Sun, 1 Apr 2018 02:28:50 +0100
-Subject: [PATCH 8/9] wined3d: Add DISABLE_PBA envvar, some PBA cleanup.
+Subject: [PATCH 8/10] wined3d: Add DISABLE_PBA envvar, some PBA cleanup.
 
 ---
  dlls/wined3d/buffer.c          |  4 ++--

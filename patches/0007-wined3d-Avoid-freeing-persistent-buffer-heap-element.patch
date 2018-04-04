@@ -1,7 +1,7 @@
 From f2aabf49eef0e432cd96cac90ed27af12c46a110 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Sun, 1 Apr 2018 02:23:43 +0100
-Subject: [PATCH 7/9] wined3d: Avoid freeing persistent buffer heap elements
+Subject: [PATCH 7/10] wined3d: Avoid freeing persistent buffer heap elements
  during use.
 
 Using HeapFree is expensive, especially when we don't have our buffers

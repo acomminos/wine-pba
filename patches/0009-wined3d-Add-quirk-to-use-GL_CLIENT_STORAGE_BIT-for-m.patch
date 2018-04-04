@@ -1,7 +1,7 @@
 From 7cb44d0e1788b232aeb8a3b73f243d80a726d150 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Sun, 1 Apr 2018 02:29:38 +0100
-Subject: [PATCH 9/9] wined3d: Add quirk to use GL_CLIENT_STORAGE_BIT for mesa.
+Subject: [PATCH 9/10] wined3d: Add quirk to use GL_CLIENT_STORAGE_BIT for mesa.
 
 ---
  dlls/wined3d/buffer_heap.c     | 15 ++++++++++++++-

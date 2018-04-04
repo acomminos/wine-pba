@@ -1,7 +1,7 @@
 From a50e63bd066afa3f6d944ef8c13fb0e415b20842 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Sun, 1 Apr 2018 02:18:14 +0100
-Subject: [PATCH 2/9] wined3d: Add support for backing dynamic wined3d_buffer
+Subject: [PATCH 2/10] wined3d: Add support for backing dynamic wined3d_buffer
  objects by a persistent map.
 
 ---
