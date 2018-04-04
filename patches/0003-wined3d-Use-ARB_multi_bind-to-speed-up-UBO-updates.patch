@@ -1,7 +1,7 @@
 From 2850f4f78ee6f3b3e1dea4d692d527b49bb85b13 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Sun, 1 Apr 2018 02:18:59 +0100
-Subject: [PATCH 3/9] wined3d: Use ARB_multi_bind to speed up UBO updates.
+Subject: [PATCH 3/10] wined3d: Use ARB_multi_bind to speed up UBO updates.
 
 ---
  dlls/wined3d/directx.c    |  4 ++++

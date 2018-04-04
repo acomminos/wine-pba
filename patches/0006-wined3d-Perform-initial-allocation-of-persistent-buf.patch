@@ -1,7 +1,7 @@
 From 8fda4d7847d610a30e9e9c258ce30bada3c6320b Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Sun, 1 Apr 2018 02:23:00 +0100
-Subject: [PATCH 6/9] wined3d: Perform initial allocation of persistent buffers
+Subject: [PATCH 6/10] wined3d: Perform initial allocation of persistent buffers
  asynchronously.
 
 ---
