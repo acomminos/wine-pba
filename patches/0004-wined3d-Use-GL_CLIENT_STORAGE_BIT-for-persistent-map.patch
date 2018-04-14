@@ -1,4 +1,4 @@
-From 56b69bee4b15f4a83565c8e1a2b4d063e90d1a5f Mon Sep 17 00:00:00 2001
+From 7092a43612aa3d1a3ad91b8058125925f53ed04b Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Sun, 1 Apr 2018 02:19:36 +0100
 Subject: [PATCH 4/9] wined3d: Use GL_CLIENT_STORAGE_BIT for persistent
@@ -22,5 +22,5 @@ index b133bd6..75f84b0 100644
      // TODO(acomminos): where should we be checking for errors here?
      GL_EXTCALL(glGenBuffers(1, &object->buffer_object));
 -- 
-2.16.3
+2.17.0
 
