@@ -1,7 +1,8 @@
-From 7cb44d0e1788b232aeb8a3b73f243d80a726d150 Mon Sep 17 00:00:00 2001
+From 1a127456348da30c84ed1bd1d1d88c6a045f4d9c Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
-Date: Sun, 1 Apr 2018 02:29:38 +0100
-Subject: [PATCH 9/9] wined3d: Add quirk to use GL_CLIENT_STORAGE_BIT for mesa.
+Date: Thu, 15 Mar 2018 21:22:06 -0700
+Subject: [PATCH 09/10] wined3d: Add quirk to use GL_CLIENT_STORAGE_BIT for
+ mesa.
 
 ---
  dlls/wined3d/buffer_heap.c     | 15 ++++++++++++++-
@@ -10,7 +11,7 @@ Subject: [PATCH 9/9] wined3d: Add quirk to use GL_CLIENT_STORAGE_BIT for mesa.
  3 files changed, 34 insertions(+), 1 deletion(-)
 
 diff --git a/dlls/wined3d/buffer_heap.c b/dlls/wined3d/buffer_heap.c
-index 899aad9..9e8f2d7 100644
+index 899aad9612..9e8f2d799d 100644
 --- a/dlls/wined3d/buffer_heap.c
 +++ b/dlls/wined3d/buffer_heap.c
 @@ -165,7 +165,20 @@ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr s
@@ -36,7 +37,7 @@ index 899aad9..9e8f2d7 100644
      GL_EXTCALL(glGenBuffers(1, &object->buffer_object));
      checkGLcall("glGenBuffers");
 diff --git a/dlls/wined3d/directx.c b/dlls/wined3d/directx.c
-index 2831baa..ee0d4c7 100644
+index 2831baa1d7..ee0d4c7b2d 100644
 --- a/dlls/wined3d/directx.c
 +++ b/dlls/wined3d/directx.c
 @@ -946,6 +946,13 @@ static BOOL match_broken_viewport_subpixel_bits(const struct wined3d_gl_info *gl
@@ -80,7 +81,7 @@ index 2831baa..ee0d4c7 100644
  
  /* Certain applications (Steam) complain if we report an outdated driver version. In general,
 diff --git a/dlls/wined3d/wined3d_private.h b/dlls/wined3d/wined3d_private.h
-index 25ffe45..55e6432 100644
+index abd12c20eb..6d68a534a7 100644
 --- a/dlls/wined3d/wined3d_private.h
 +++ b/dlls/wined3d/wined3d_private.h
 @@ -75,6 +75,7 @@
@@ -92,5 +93,5 @@ index 25ffe45..55e6432 100644
  enum wined3d_ffp_idx
  {
 -- 
-2.16.3
+2.17.0
 

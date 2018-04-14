@@ -1,0 +1,140 @@
+From 8a142cda503dd2e1104a6a07f3cbf096756adcbe Mon Sep 17 00:00:00 2001
+From: Firerat <firer4t@googlemail.com>
+Date: Sat, 31 Mar 2018 00:43:33 +0100
+Subject: [PATCH 10/10] wined3d: knobs and switches
+
+patch adds envvars to tweak PBA, for better or for worse.
+
+envvars __PBA_GEO_HEAP and __PBA_CB_HEAP
+  e.g. __PBA_GEO_HEAP=256 __PBA_CB_HEAP=64
+    known to prevent FF XIV 32bit dx9 client crash.
+  will fallback to defaults if heaps are greater than vram
+
+  if vram is less than 640mb ( 512+128 ) the defaults are crudely
+  calculated, geo 3/4 vram and cb 1/8 vram.
+
+  cb can be set at 0, but only intended for pure dx8 or dx9.
+
+envvar __PBA_FORCE_GL_CLIENT_STORAGE_BIT
+  force use of DMA_CACHE instead of SYSTEM_HEAP
+    no effect when using mesa
+---
+ dlls/wined3d/buffer_heap.c |  9 +++++-
+ dlls/wined3d/device.c      | 56 ++++++++++++++++++++++++++++++++++----
+ 2 files changed, 58 insertions(+), 7 deletions(-)
+
+diff --git a/dlls/wined3d/buffer_heap.c b/dlls/wined3d/buffer_heap.c
+index 9e8f2d799d..320b077782 100644
+--- a/dlls/wined3d/buffer_heap.c
++++ b/dlls/wined3d/buffer_heap.c
+@@ -176,7 +176,14 @@ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr s
+     // Hints are awful anyway.
+     if (gl_info->quirks & WINED3D_QUIRK_USE_CLIENT_STORAGE_BIT)
+     {
+-        FIXME_(d3d_perf)("PBA: using GL_CLIENT_STORAGE_BIT quirk");
++        FIXME_(d3d_perf)("PBA: using GL_CLIENT_STORAGE_BIT quirk (mesa)\n");
++        storage_flags |= GL_CLIENT_STORAGE_BIT;
++    }
++
++    const char *env_pba_force_gcsb = getenv("__PBA_FORCE_GL_CLIENT_STORAGE_BIT");
++    if (!(gl_info->quirks & WINED3D_QUIRK_USE_CLIENT_STORAGE_BIT) && ((env_pba_force_gcsb) && *env_pba_force_gcsb != '0'))
++    {
++        FIXME_(d3d_perf)("PBA: forcing use of GL_CLIENT_STORAGE_BIT quirk (__PBA_FORCE_GL_CLIENT_STORAGE_BIT=%s)\n",env_pba_force_gcsb);
+         storage_flags |= GL_CLIENT_STORAGE_BIT;
+     }
+ 
+diff --git a/dlls/wined3d/device.c b/dlls/wined3d/device.c
+index 098e04ef1c..df8e2f3f54 100644
+--- a/dlls/wined3d/device.c
++++ b/dlls/wined3d/device.c
+@@ -35,6 +35,7 @@
+ #include "wined3d_private.h"
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(d3d);
++WINE_DECLARE_DEBUG_CHANNEL(d3d_perf);
+ WINE_DECLARE_DEBUG_CHANNEL(winediag);
+ 
+ /* Define the default light parameters as specified by MSDN. */
+@@ -849,7 +850,7 @@ static void create_buffer_heap(struct wined3d_device *device, struct wined3d_con
+ 
+     if (!gl_info->supported[ARB_BUFFER_STORAGE])
+     {
+-        FIXME("Not using PBA, ARB_buffer_storage unsupported.\n");
++        FIXME_(d3d_perf)("Not using PBA, ARB_buffer_storage unsupported.\n");
+     }
+     else if ((env_pba_disable = getenv("PBA_DISABLE")) && *env_pba_disable != '0')
+     {
+@@ -857,11 +858,47 @@ static void create_buffer_heap(struct wined3d_device *device, struct wined3d_con
+     }
+     else
+     {
++        //(Firerat) is it worth initialising an int for vram?
++        unsigned int vram_mb = device->adapter->vram_bytes / 1048576;
++        const char *env_pba_geo_heap = getenv("__PBA_GEO_HEAP");
+         // TODO(acomminos): kill this magic number. perhaps base on vram.
+-        GLsizeiptr geo_heap_size = 512 * 1024 * 1024;
++        unsigned int geo_heap = ( env_pba_geo_heap ? atoi(env_pba_geo_heap) : 512 );
++        const char *env_pba_cb_heap = getenv("__PBA_CB_HEAP");
+         // We choose a constant buffer size of 128MB, the same as NVIDIA claims to
+         // use in their Direct3D driver for discarded constant buffers.
+-        GLsizeiptr cb_heap_size = 128 * 1024 * 1024;
++        unsigned int cb_heap = ( env_pba_cb_heap ? atoi(env_pba_cb_heap) : 128 );
++
++        if (env_pba_geo_heap)
++        {
++            FIXME_(d3d_perf)("geo_heap_size set by envvar __PBA_GEO_HEAP=%s\n",env_pba_geo_heap);
++        }
++        if (env_pba_cb_heap)
++        {
++            FIXME_(d3d_perf)("cb_heap_size set by envvar __PBA_CB_HEAP=%s\n",env_pba_cb_heap);
++        }
++
++        if ( geo_heap + cb_heap > vram_mb )
++        {
++            FIXME_(d3d_perf)("geo_heap + cb_heap ( %dmb + %dmb ) exceeds vram of %dmb. Dropping back to PBA defaults\n", geo_heap, cb_heap, vram_mb);
++            if ( vram_mb <= 640 ) // most users should have plenty of vram, but if not at least try to give them PBA..
++            {
++                //TODO (Firerat) I should probably figure out if using dx10+ ( possible? ), could skip cb_heap if not
++                FIXME_(d3d_perf)("You have low vram(%dmb), making crude guess at reasonable heap sizes for PBA\n", vram_mb);
++                // very crude, using 87.5% of vram
++                geo_heap = vram_mb * 0.75; // 3 quarters of vram
++                cb_heap = vram_mb * 0.125; // 8th of vram, probably too low
++                FIXME_(d3d_perf)("guess expressed as envvars: __PBA_GEO_HEAP=%d __PBA_CB_HEAP=%d\n", geo_heap, cb_heap);
++                //TODO (Firerat) might not be worth messing about here, just fail with note about envvars
++            }
++            else
++            {
++                // should ony get here if user screwed up their pba envvars
++                geo_heap = 512;
++                cb_heap = 128;
++            }
++        }
++        GLsizeiptr geo_heap_size = geo_heap * 1024 * 1024;
++        GLsizeiptr cb_heap_size = cb_heap * 1024 * 1024;
+         GLint ub_alignment;
+         HRESULT hr;
+ 
+@@ -876,10 +913,17 @@ static void create_buffer_heap(struct wined3d_device *device, struct wined3d_con
+             goto fail;
+         }
+ 
+-        if (FAILED(hr = wined3d_buffer_heap_create(context, cb_heap_size, ub_alignment, TRUE, &device->cb_buffer_heap)))
++        if (cb_heap != 0) // assume user doesn't want a cb_heap , e.g. not dx10+
+         {
+-            ERR("Failed to create persistent buffer heap for constant buffers, hr %#x.\n", hr);
+-            goto fail;
++            if (FAILED(hr = wined3d_buffer_heap_create(context, cb_heap_size, ub_alignment, TRUE, &device->cb_buffer_heap)))
++            {
++                ERR("Failed to create persistent buffer heap for constant buffers, hr %#x.\n", hr);
++                goto fail;
++            }
++        }
++        else
++        {
++            FIXME_(d3d_perf)("cb_heap set to 0, this will degrade performance with dx10 and dx11\n");
+         }
+ 
+         FIXME("Initialized PBA (geo_heap_size: %ld, cb_heap_size: %ld, ub_align: %d)\n", geo_heap_size, cb_heap_size, ub_alignment);
+-- 
+2.17.0
+
