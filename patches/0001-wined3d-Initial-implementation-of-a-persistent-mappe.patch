@@ -1,23 +1,23 @@
-From da3cbbdc792eef0783442c1b7baae3db9e6a528d Mon Sep 17 00:00:00 2001
+From aa3a2c59904a460629673d6c4f705b97c01d48fb Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
-Date: Sun, 1 Apr 2018 02:16:11 +0100
-Subject: [PATCH 1/10] wined3d: Initial implementation of a persistent mapped
+Date: Mon, 5 Mar 2018 15:38:35 -0800
+Subject: [PATCH 01/10] wined3d: Initial implementation of a persistent mapped
  buffer allocator.
 
 ---
  dlls/wined3d/Makefile.in       |   1 +
- dlls/wined3d/buffer_heap.c     | 508 +++++++++++++++++++++++++++++++++++++++++
+ dlls/wined3d/buffer_heap.c     | 508 +++++++++++++++++++++++++++++++++
  dlls/wined3d/cs.c              |   9 +
- dlls/wined3d/device.c          |  52 +++++
+ dlls/wined3d/device.c          |  52 ++++
  dlls/wined3d/directx.c         |   3 +
  dlls/wined3d/query.c           |   2 +-
  dlls/wined3d/wined3d_gl.h      |   1 +
- dlls/wined3d/wined3d_private.h |  68 +++++-
+ dlls/wined3d/wined3d_private.h |  68 ++++-
  8 files changed, 640 insertions(+), 4 deletions(-)
  create mode 100644 dlls/wined3d/buffer_heap.c
 
 diff --git a/dlls/wined3d/Makefile.in b/dlls/wined3d/Makefile.in
-index b850ba6..52ef866 100644
+index b850ba6872..52ef8666fb 100644
 --- a/dlls/wined3d/Makefile.in
 +++ b/dlls/wined3d/Makefile.in
 @@ -6,6 +6,7 @@ C_SRCS = \
@@ -30,7 +30,7 @@ index b850ba6..52ef866 100644
  	device.c \
 diff --git a/dlls/wined3d/buffer_heap.c b/dlls/wined3d/buffer_heap.c
 new file mode 100644
-index 0000000..b133bd6
+index 0000000000..b133bd6893
 --- /dev/null
 +++ b/dlls/wined3d/buffer_heap.c
 @@ -0,0 +1,508 @@
@@ -543,7 +543,7 @@ index 0000000..b133bd6
 +    return WINED3D_OK;
 +}
 diff --git a/dlls/wined3d/cs.c b/dlls/wined3d/cs.c
-index 6697cff..f4ea41c 100644
+index 6697cff3cc..f4ea41cf53 100644
 --- a/dlls/wined3d/cs.c
 +++ b/dlls/wined3d/cs.c
 @@ -465,6 +465,15 @@ static void wined3d_cs_exec_present(struct wined3d_cs *cs, const void *data)
@@ -563,7 +563,7 @@ index 6697cff..f4ea41c 100644
  
  void wined3d_cs_emit_present(struct wined3d_cs *cs, struct wined3d_swapchain *swapchain,
 diff --git a/dlls/wined3d/device.c b/dlls/wined3d/device.c
-index c3f5e09..57958da 100644
+index cd37be40d7..8c10e762f7 100644
 --- a/dlls/wined3d/device.c
 +++ b/dlls/wined3d/device.c
 @@ -840,6 +840,53 @@ static void destroy_default_samplers(struct wined3d_device *device, struct wined
@@ -629,7 +629,7 @@ index c3f5e09..57958da 100644
      context_release(context);
  
      while (device->context_count)
-@@ -1052,6 +1101,9 @@ static void wined3d_device_create_primary_opengl_context_cs(void *object)
+@@ -1053,6 +1102,9 @@ static void wined3d_device_create_primary_opengl_context_cs(void *object)
      context = context_acquire(device, target, 0);
      create_dummy_textures(device, context);
      create_default_samplers(device, context);
@@ -640,7 +640,7 @@ index c3f5e09..57958da 100644
  }
  
 diff --git a/dlls/wined3d/directx.c b/dlls/wined3d/directx.c
-index d55d567..eabdb65 100644
+index d55d5674f4..eabdb658b4 100644
 --- a/dlls/wined3d/directx.c
 +++ b/dlls/wined3d/directx.c
 @@ -111,6 +111,7 @@ static const struct wined3d_extension_map gl_extension_map[] =
@@ -661,7 +661,7 @@ index d55d567..eabdb65 100644
      USE_GL_FUNC(glClearBufferData)
      USE_GL_FUNC(glClearBufferSubData)
 diff --git a/dlls/wined3d/query.c b/dlls/wined3d/query.c
-index 5ea79b6..f3ca163 100644
+index 5ea79b6e4a..f3ca1630e5 100644
 --- a/dlls/wined3d/query.c
 +++ b/dlls/wined3d/query.c
 @@ -88,7 +88,7 @@ static BOOL wined3d_fence_supported(const struct wined3d_gl_info *gl_info)
@@ -674,7 +674,7 @@ index 5ea79b6..f3ca163 100644
  {
      const struct wined3d_gl_info *gl_info;
 diff --git a/dlls/wined3d/wined3d_gl.h b/dlls/wined3d/wined3d_gl.h
-index bbee788..730eff1 100644
+index bbee7881f2..730eff131f 100644
 --- a/dlls/wined3d/wined3d_gl.h
 +++ b/dlls/wined3d/wined3d_gl.h
 @@ -44,6 +44,7 @@ enum wined3d_gl_extension
@@ -686,7 +686,7 @@ index bbee788..730eff1 100644
      ARB_CLEAR_TEXTURE,
      ARB_CLIP_CONTROL,
 diff --git a/dlls/wined3d/wined3d_private.h b/dlls/wined3d/wined3d_private.h
-index 3c183a1..ee52801 100644
+index 8001062b0b..18afa8b5fe 100644
 --- a/dlls/wined3d/wined3d_private.h
 +++ b/dlls/wined3d/wined3d_private.h
 @@ -1712,6 +1712,9 @@ void wined3d_fence_destroy(struct wined3d_fence *fence) DECLSPEC_HIDDEN;
@@ -699,7 +699,7 @@ index 3c183a1..ee52801 100644
  
  /* Direct3D terminology with little modifications. We do not have an issued
   * state because only the driver knows about it, but we have a created state
-@@ -2980,6 +2983,10 @@ struct wined3d_device
+@@ -2988,6 +2991,10 @@ struct wined3d_device
      /* Context management */
      struct wined3d_context **contexts;
      UINT context_count;
@@ -710,7 +710,7 @@ index 3c183a1..ee52801 100644
  };
  
  void device_clear_render_targets(struct wined3d_device *device, UINT rt_count, const struct wined3d_fb_state *fb,
-@@ -3480,6 +3487,12 @@ void state_init(struct wined3d_state *state, struct wined3d_fb_state *fb,
+@@ -3492,6 +3499,12 @@ void state_init(struct wined3d_state *state, struct wined3d_fb_state *fb,
          DWORD flags) DECLSPEC_HIDDEN;
  void state_unbind_resources(struct wined3d_state *state) DECLSPEC_HIDDEN;
  
@@ -723,7 +723,7 @@ index 3c183a1..ee52801 100644
  enum wined3d_cs_queue_id
  {
      WINED3D_CS_QUEUE_DEFAULT = 0,
-@@ -3657,12 +3670,61 @@ enum wined3d_buffer_conversion_type
+@@ -3669,12 +3682,61 @@ enum wined3d_buffer_conversion_type
      CONV_POSITIONT,
  };
  
@@ -789,5 +789,5 @@ index 3c183a1..ee52801 100644
  {
      struct wined3d_resource resource;
 -- 
-2.16.3
+2.17.0
 

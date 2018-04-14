@@ -1,15 +1,15 @@
-From 8fda4d7847d610a30e9e9c258ce30bada3c6320b Mon Sep 17 00:00:00 2001
+From 7c34148f442defe9b3212f93ab85fcc4255f14d6 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
-Date: Sun, 1 Apr 2018 02:23:00 +0100
-Subject: [PATCH 6/10] wined3d: Perform initial allocation of persistent buffers
- asynchronously.
+Date: Thu, 8 Mar 2018 22:42:03 -0800
+Subject: [PATCH 06/10] wined3d: Perform initial allocation of persistent
+ buffers asynchronously.
 
 ---
  dlls/wined3d/buffer.c | 30 ++++++++++++++++++++----------
  1 file changed, 20 insertions(+), 10 deletions(-)
 
 diff --git a/dlls/wined3d/buffer.c b/dlls/wined3d/buffer.c
-index 31dd88e..3c44a5b 100644
+index 5933481613..825a796db1 100644
 --- a/dlls/wined3d/buffer.c
 +++ b/dlls/wined3d/buffer.c
 @@ -272,7 +272,7 @@ fail:
@@ -21,7 +21,7 @@ index 31dd88e..3c44a5b 100644
  {
      struct wined3d_device *device = buffer->resource.device;
      struct wined3d_buffer_heap *heap;
-@@ -688,7 +688,7 @@ static BOOL wined3d_buffer_prepare_location(struct wined3d_buffer *buffer,
+@@ -685,7 +685,7 @@ static BOOL wined3d_buffer_prepare_location(struct wined3d_buffer *buffer,
                  WARN("Trying to map a persistent region for buffer %p without WINED3D_BUFFER_PERSISTENT.\n", buffer);
                  return FALSE;
              }
@@ -30,7 +30,7 @@ index 31dd88e..3c44a5b 100644
  
          default:
              ERR("Invalid location %s.\n", wined3d_debug_location(location));
-@@ -1116,7 +1116,7 @@ static HRESULT wined3d_buffer_map(struct wined3d_buffer *buffer, UINT offset, UI
+@@ -1113,7 +1113,7 @@ static HRESULT wined3d_buffer_map(struct wined3d_buffer *buffer, UINT offset, UI
          const struct wined3d_gl_info *gl_info;
          context = context_acquire(device, NULL, 0);
  
@@ -39,7 +39,7 @@ index 31dd88e..3c44a5b 100644
  
          gl_info = context->gl_info;
          gl_info->gl_ops.gl.p_glFinish();
-@@ -1392,8 +1392,20 @@ static HRESULT buffer_resource_sub_resource_map(struct wined3d_resource *resourc
+@@ -1389,8 +1389,20 @@ static HRESULT buffer_resource_sub_resource_map(struct wined3d_resource *resourc
  
      // Support immediate mapping of persistent buffers off the command thread,
      // which require no GL calls to interface with.
@@ -61,7 +61,7 @@ index 31dd88e..3c44a5b 100644
          map_desc->row_pitch = map_desc->slice_pitch = buffer->desc.byte_width;
          if (flags & WINED3D_MAP_DISCARD)
          {
-@@ -1413,6 +1425,7 @@ static HRESULT buffer_resource_sub_resource_map(struct wined3d_resource *resourc
+@@ -1410,6 +1422,7 @@ static HRESULT buffer_resource_sub_resource_map(struct wined3d_resource *resourc
              // currently used buffer to the free pool, along with the fence that
              // must be called before the buffer can be reused.
              wined3d_cs_emit_discard_buffer(resource->device->cs, buffer, map_range);
@@ -69,7 +69,7 @@ index 31dd88e..3c44a5b 100644
              return WINED3D_OK;
          }
          else if (flags & WINED3D_MAP_NOOVERWRITE)
-@@ -1423,14 +1436,11 @@ static HRESULT buffer_resource_sub_resource_map(struct wined3d_resource *resourc
+@@ -1420,14 +1433,11 @@ static HRESULT buffer_resource_sub_resource_map(struct wined3d_resource *resourc
              struct wined3d_map_range map_range = buffer->mt_persistent_map;
              map_desc->data = buffer->buffer_heap->map_ptr + map_range.offset + offset;
              resource->map_count++;
@@ -88,5 +88,5 @@ index 31dd88e..3c44a5b 100644
  
      return E_NOTIMPL;
 -- 
-2.16.3
+2.17.0
 

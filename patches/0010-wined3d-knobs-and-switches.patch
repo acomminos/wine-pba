@@ -1,4 +1,4 @@
-From 4d897e40ec005d1452a2a94200754213e63b44cb Mon Sep 17 00:00:00 2001
+From 8a142cda503dd2e1104a6a07f3cbf096756adcbe Mon Sep 17 00:00:00 2001
 From: Firerat <firer4t@googlemail.com>
 Date: Sat, 31 Mar 2018 00:43:33 +0100
 Subject: [PATCH 10/10] wined3d: knobs and switches
@@ -24,7 +24,7 @@ envvar __PBA_FORCE_GL_CLIENT_STORAGE_BIT
  2 files changed, 58 insertions(+), 7 deletions(-)
 
 diff --git a/dlls/wined3d/buffer_heap.c b/dlls/wined3d/buffer_heap.c
-index 9e8f2d799d..31029a4fc1 100644
+index 9e8f2d799d..320b077782 100644
 --- a/dlls/wined3d/buffer_heap.c
 +++ b/dlls/wined3d/buffer_heap.c
 @@ -176,7 +176,14 @@ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr s
@@ -44,7 +44,7 @@ index 9e8f2d799d..31029a4fc1 100644
      }
  
 diff --git a/dlls/wined3d/device.c b/dlls/wined3d/device.c
-index 9a8bade7e9..bdd7fb1401 100644
+index 098e04ef1c..df8e2f3f54 100644
 --- a/dlls/wined3d/device.c
 +++ b/dlls/wined3d/device.c
 @@ -35,6 +35,7 @@

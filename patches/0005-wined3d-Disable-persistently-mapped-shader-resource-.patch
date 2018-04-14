@@ -1,7 +1,7 @@
-From 78a493953e501224ba2e7e9451e9c3562a6e1eb8 Mon Sep 17 00:00:00 2001
+From 7d0bee6eb5e3fc0010407c4c7bc9ccd23196d050 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
-Date: Sun, 1 Apr 2018 02:20:03 +0100
-Subject: [PATCH 5/10] wined3d: Disable persistently mapped shader resource
+Date: Thu, 8 Mar 2018 22:00:33 -0800
+Subject: [PATCH 05/10] wined3d: Disable persistently mapped shader resource
  buffers.
 
 ---
@@ -9,7 +9,7 @@ Subject: [PATCH 5/10] wined3d: Disable persistently mapped shader resource
  1 file changed, 4 insertions(+)
 
 diff --git a/dlls/wined3d/buffer.c b/dlls/wined3d/buffer.c
-index aee4b5b..31dd88e 100644
+index 40c454e466..5933481613 100644
 --- a/dlls/wined3d/buffer.c
 +++ b/dlls/wined3d/buffer.c
 @@ -1596,6 +1596,10 @@ static HRESULT buffer_init(struct wined3d_buffer *buffer, struct wined3d_device
@@ -24,5 +24,5 @@ index aee4b5b..31dd88e 100644
          {
              // If supported, use persistent mapped buffers instead of a
 -- 
-2.16.3
+2.17.0
 
