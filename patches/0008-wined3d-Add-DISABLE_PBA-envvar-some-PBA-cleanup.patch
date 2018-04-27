@@ -1,6 +1,6 @@
-From 8360256efb5d1346cab403ad58ba346a0f161a96 Mon Sep 17 00:00:00 2001
+From bffc7d7444b681a5a797dafd136c978e9c97c0db Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
-Date: Sun, 1 Apr 2018 02:28:50 +0100
+Date: Thu, 15 Mar 2018 21:07:21 -0700
 Subject: [PATCH 8/9] wined3d: Add DISABLE_PBA envvar, some PBA cleanup.
 
 ---
@@ -12,7 +12,7 @@ Subject: [PATCH 8/9] wined3d: Add DISABLE_PBA envvar, some PBA cleanup.
  5 files changed, 57 insertions(+), 27 deletions(-)
 
 diff --git a/dlls/wined3d/buffer.c b/dlls/wined3d/buffer.c
-index 533befd..3a56d9c 100644
+index 533befd2fcb..3a56d9c9a39 100644
 --- a/dlls/wined3d/buffer.c
 +++ b/dlls/wined3d/buffer.c
 @@ -1601,9 +1601,9 @@ static HRESULT buffer_init(struct wined3d_buffer *buffer, struct wined3d_device
@@ -28,7 +28,7 @@ index 533befd..3a56d9c 100644
          else if (bind_flags & WINED3D_BIND_SHADER_RESOURCE)
          {
 diff --git a/dlls/wined3d/buffer_heap.c b/dlls/wined3d/buffer_heap.c
-index 80670c5..899aad9 100644
+index 80670c515f7..899aad96126 100644
 --- a/dlls/wined3d/buffer_heap.c
 +++ b/dlls/wined3d/buffer_heap.c
 @@ -25,6 +25,9 @@
@@ -104,10 +104,10 @@ index 80670c5..899aad9 100644
  }
  
 diff --git a/dlls/wined3d/device.c b/dlls/wined3d/device.c
-index 8c10e76..098e04e 100644
+index f6bf07604c7..a79241f28cc 100644
 --- a/dlls/wined3d/device.c
 +++ b/dlls/wined3d/device.c
-@@ -844,16 +844,27 @@ static void destroy_default_samplers(struct wined3d_device *device, struct wined
+@@ -841,16 +841,27 @@ static void destroy_default_samplers(struct wined3d_device *device, struct wined
  static void create_buffer_heap(struct wined3d_device *device, struct wined3d_context *context)
  {
      const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
@@ -143,7 +143,7 @@ index 8c10e76..098e04e 100644
          gl_info->gl_ops.gl.p_glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &ub_alignment);
  
          // Align constant buffer heap size, in case GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT isn't a power of two (for some reason).
-@@ -862,19 +873,22 @@ static void create_buffer_heap(struct wined3d_device *device, struct wined3d_con
+@@ -859,19 +870,22 @@ static void create_buffer_heap(struct wined3d_device *device, struct wined3d_con
          if (FAILED(hr = wined3d_buffer_heap_create(context, geo_heap_size, 0, TRUE, &device->wo_buffer_heap)))
          {
              ERR("Failed to create write-only persistent buffer heap, hr %#x.\n", hr);
@@ -171,7 +171,7 @@ index 8c10e76..098e04e 100644
  
  /* Context activation is done by the caller. */
 diff --git a/dlls/wined3d/query.c b/dlls/wined3d/query.c
-index f3ca163..5ea79b6 100644
+index f3ca1630e58..5ea79b6e4a7 100644
 --- a/dlls/wined3d/query.c
 +++ b/dlls/wined3d/query.c
 @@ -88,7 +88,7 @@ static BOOL wined3d_fence_supported(const struct wined3d_gl_info *gl_info)
@@ -184,10 +184,10 @@ index f3ca163..5ea79b6 100644
  {
      const struct wined3d_gl_info *gl_info;
 diff --git a/dlls/wined3d/wined3d_private.h b/dlls/wined3d/wined3d_private.h
-index 43b6623..abd12c2 100644
+index 34f3fb540df..1335c122890 100644
 --- a/dlls/wined3d/wined3d_private.h
 +++ b/dlls/wined3d/wined3d_private.h
-@@ -1713,9 +1713,6 @@ void wined3d_fence_destroy(struct wined3d_fence *fence) DECLSPEC_HIDDEN;
+@@ -1727,9 +1727,6 @@ void wined3d_fence_destroy(struct wined3d_fence *fence) DECLSPEC_HIDDEN;
  void wined3d_fence_issue(struct wined3d_fence *fence, const struct wined3d_device *device) DECLSPEC_HIDDEN;
  enum wined3d_fence_result wined3d_fence_wait(const struct wined3d_fence *fence,
          const struct wined3d_device *device) DECLSPEC_HIDDEN;
@@ -197,7 +197,7 @@ index 43b6623..abd12c2 100644
  
  /* Direct3D terminology with little modifications. We do not have an issued
   * state because only the driver knows about it, but we have a created state
-@@ -2941,7 +2938,8 @@ struct wined3d_device
+@@ -2968,7 +2965,8 @@ struct wined3d_device
      BYTE inScene : 1;                   /* A flag to check for proper BeginScene / EndScene call pairs */
      BYTE softwareVertexProcessing : 1;  /* process vertex shaders using software or hardware */
      BYTE filter_messages : 1;
