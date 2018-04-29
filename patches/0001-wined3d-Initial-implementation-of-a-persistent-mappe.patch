@@ -1,6 +1,6 @@
-From 91a7b8f878451323e7cd71b8d949b35b6447e443 Mon Sep 17 00:00:00 2001
+From db8f9546baea233a4bcfae27fa12d655e7c4be3d Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
-Date: Sun, 1 Apr 2018 02:16:11 +0100
+Date: Mon, 5 Mar 2018 15:38:35 -0800
 Subject: [PATCH 1/9] wined3d: Initial implementation of a persistent mapped
  buffer allocator.
 
@@ -17,7 +17,7 @@ Subject: [PATCH 1/9] wined3d: Initial implementation of a persistent mapped
  create mode 100644 dlls/wined3d/buffer_heap.c
 
 diff --git a/dlls/wined3d/Makefile.in b/dlls/wined3d/Makefile.in
-index b850ba6..52ef866 100644
+index b850ba6872c..52ef8666fb7 100644
 --- a/dlls/wined3d/Makefile.in
 +++ b/dlls/wined3d/Makefile.in
 @@ -6,6 +6,7 @@ C_SRCS = \
@@ -30,7 +30,7 @@ index b850ba6..52ef866 100644
  	device.c \
 diff --git a/dlls/wined3d/buffer_heap.c b/dlls/wined3d/buffer_heap.c
 new file mode 100644
-index 0000000..b133bd6
+index 00000000000..b133bd68933
 --- /dev/null
 +++ b/dlls/wined3d/buffer_heap.c
 @@ -0,0 +1,508 @@
@@ -543,10 +543,10 @@ index 0000000..b133bd6
 +    return WINED3D_OK;
 +}
 diff --git a/dlls/wined3d/cs.c b/dlls/wined3d/cs.c
-index 6697cff..f4ea41c 100644
+index c60d67b83a7..e2bfd88dd2c 100644
 --- a/dlls/wined3d/cs.c
 +++ b/dlls/wined3d/cs.c
-@@ -465,6 +465,15 @@ static void wined3d_cs_exec_present(struct wined3d_cs *cs, const void *data)
+@@ -467,6 +467,15 @@ static void wined3d_cs_exec_present(struct wined3d_cs *cs, const void *data)
      }
  
      InterlockedDecrement(&cs->pending_presents);
@@ -563,10 +563,10 @@ index 6697cff..f4ea41c 100644
  
  void wined3d_cs_emit_present(struct wined3d_cs *cs, struct wined3d_swapchain *swapchain,
 diff --git a/dlls/wined3d/device.c b/dlls/wined3d/device.c
-index cd37be4..8c10e76 100644
+index b97b7b963ba..f6bf07604c7 100644
 --- a/dlls/wined3d/device.c
 +++ b/dlls/wined3d/device.c
-@@ -840,6 +840,53 @@ static void destroy_default_samplers(struct wined3d_device *device, struct wined
+@@ -837,6 +837,53 @@ static void destroy_default_samplers(struct wined3d_device *device, struct wined
      device->null_sampler = NULL;
  }
  
@@ -620,7 +620,7 @@ index cd37be4..8c10e76 100644
  static LONG fullscreen_style(LONG style)
  {
      /* Make sure the window is managed, otherwise we won't get keyboard input. */
-@@ -1004,6 +1051,8 @@ static void wined3d_device_delete_opengl_contexts_cs(void *object)
+@@ -1001,6 +1048,8 @@ static void wined3d_device_delete_opengl_contexts_cs(void *object)
      device->shader_backend->shader_free_private(device);
      destroy_dummy_textures(device, context);
      destroy_default_samplers(device, context);
@@ -629,7 +629,7 @@ index cd37be4..8c10e76 100644
      context_release(context);
  
      while (device->context_count)
-@@ -1053,6 +1102,9 @@ static void wined3d_device_create_primary_opengl_context_cs(void *object)
+@@ -1050,6 +1099,9 @@ static void wined3d_device_create_primary_opengl_context_cs(void *object)
      context = context_acquire(device, target, 0);
      create_dummy_textures(device, context);
      create_default_samplers(device, context);
@@ -640,7 +640,7 @@ index cd37be4..8c10e76 100644
  }
  
 diff --git a/dlls/wined3d/directx.c b/dlls/wined3d/directx.c
-index d55d567..eabdb65 100644
+index d55d5674f4f..eabdb658b48 100644
 --- a/dlls/wined3d/directx.c
 +++ b/dlls/wined3d/directx.c
 @@ -111,6 +111,7 @@ static const struct wined3d_extension_map gl_extension_map[] =
@@ -661,7 +661,7 @@ index d55d567..eabdb65 100644
      USE_GL_FUNC(glClearBufferData)
      USE_GL_FUNC(glClearBufferSubData)
 diff --git a/dlls/wined3d/query.c b/dlls/wined3d/query.c
-index 5ea79b6..f3ca163 100644
+index 5ea79b6e4a7..f3ca1630e58 100644
 --- a/dlls/wined3d/query.c
 +++ b/dlls/wined3d/query.c
 @@ -88,7 +88,7 @@ static BOOL wined3d_fence_supported(const struct wined3d_gl_info *gl_info)
@@ -674,7 +674,7 @@ index 5ea79b6..f3ca163 100644
  {
      const struct wined3d_gl_info *gl_info;
 diff --git a/dlls/wined3d/wined3d_gl.h b/dlls/wined3d/wined3d_gl.h
-index bbee788..730eff1 100644
+index bbee7881f2f..730eff131f3 100644
 --- a/dlls/wined3d/wined3d_gl.h
 +++ b/dlls/wined3d/wined3d_gl.h
 @@ -44,6 +44,7 @@ enum wined3d_gl_extension
@@ -686,10 +686,10 @@ index bbee788..730eff1 100644
      ARB_CLEAR_TEXTURE,
      ARB_CLIP_CONTROL,
 diff --git a/dlls/wined3d/wined3d_private.h b/dlls/wined3d/wined3d_private.h
-index 8001062..18afa8b 100644
+index ee4e1a4d6c3..dea1c2f5207 100644
 --- a/dlls/wined3d/wined3d_private.h
 +++ b/dlls/wined3d/wined3d_private.h
-@@ -1712,6 +1712,9 @@ void wined3d_fence_destroy(struct wined3d_fence *fence) DECLSPEC_HIDDEN;
+@@ -1726,6 +1726,9 @@ void wined3d_fence_destroy(struct wined3d_fence *fence) DECLSPEC_HIDDEN;
  void wined3d_fence_issue(struct wined3d_fence *fence, const struct wined3d_device *device) DECLSPEC_HIDDEN;
  enum wined3d_fence_result wined3d_fence_wait(const struct wined3d_fence *fence,
          const struct wined3d_device *device) DECLSPEC_HIDDEN;
@@ -699,7 +699,7 @@ index 8001062..18afa8b 100644
  
  /* Direct3D terminology with little modifications. We do not have an issued
   * state because only the driver knows about it, but we have a created state
-@@ -2988,6 +2991,10 @@ struct wined3d_device
+@@ -3015,6 +3018,10 @@ struct wined3d_device
      /* Context management */
      struct wined3d_context **contexts;
      UINT context_count;
@@ -710,7 +710,7 @@ index 8001062..18afa8b 100644
  };
  
  void device_clear_render_targets(struct wined3d_device *device, UINT rt_count, const struct wined3d_fb_state *fb,
-@@ -3492,6 +3499,12 @@ void state_init(struct wined3d_state *state, struct wined3d_fb_state *fb,
+@@ -3522,6 +3529,12 @@ void state_init(struct wined3d_state *state, struct wined3d_fb_state *fb,
          DWORD flags) DECLSPEC_HIDDEN;
  void state_unbind_resources(struct wined3d_state *state) DECLSPEC_HIDDEN;
  
@@ -723,7 +723,7 @@ index 8001062..18afa8b 100644
  enum wined3d_cs_queue_id
  {
      WINED3D_CS_QUEUE_DEFAULT = 0,
-@@ -3669,12 +3682,61 @@ enum wined3d_buffer_conversion_type
+@@ -3699,12 +3712,61 @@ enum wined3d_buffer_conversion_type
      CONV_POSITIONT,
  };
  
