@@ -1,4 +1,4 @@
-From edc7f11845fcafb7414dde498b73c69507dfc5e8 Mon Sep 17 00:00:00 2001
+From bfb3d2dd8f5f718c28f2c7427564ca79c5867381 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Thu, 8 Mar 2018 22:42:03 -0800
 Subject: [PATCH 6/9] wined3d: Perform initial allocation of persistent buffers
@@ -9,7 +9,7 @@ Subject: [PATCH 6/9] wined3d: Perform initial allocation of persistent buffers
  1 file changed, 20 insertions(+), 10 deletions(-)
 
 diff --git a/dlls/wined3d/buffer.c b/dlls/wined3d/buffer.c
-index 59334816132..825a796db1b 100644
+index 05f40a6e9da..edc4fb8e8e1 100644
 --- a/dlls/wined3d/buffer.c
 +++ b/dlls/wined3d/buffer.c
 @@ -272,7 +272,7 @@ fail:
@@ -88,5 +88,5 @@ index 59334816132..825a796db1b 100644
  
      return E_NOTIMPL;
 -- 
-2.17.0
+2.18.0
 
