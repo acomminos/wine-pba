@@ -1,4 +1,4 @@
-From bffc7d7444b681a5a797dafd136c978e9c97c0db Mon Sep 17 00:00:00 2001
+From 3cb934ca4fc5042004b5ea07a5adee7df3ec0106 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Thu, 15 Mar 2018 21:07:21 -0700
 Subject: [PATCH 8/9] wined3d: Add DISABLE_PBA envvar, some PBA cleanup.
@@ -12,10 +12,10 @@ Subject: [PATCH 8/9] wined3d: Add DISABLE_PBA envvar, some PBA cleanup.
  5 files changed, 57 insertions(+), 27 deletions(-)
 
 diff --git a/dlls/wined3d/buffer.c b/dlls/wined3d/buffer.c
-index 533befd2fcb..3a56d9c9a39 100644
+index d710abe57be..e31c14541bc 100644
 --- a/dlls/wined3d/buffer.c
 +++ b/dlls/wined3d/buffer.c
-@@ -1601,9 +1601,9 @@ static HRESULT buffer_init(struct wined3d_buffer *buffer, struct wined3d_device
+@@ -1603,9 +1603,9 @@ static HRESULT buffer_init(struct wined3d_buffer *buffer, struct wined3d_device
  
      if (buffer->resource.usage & WINED3DUSAGE_DYNAMIC)
      {
@@ -104,7 +104,7 @@ index 80670c515f7..899aad96126 100644
  }
  
 diff --git a/dlls/wined3d/device.c b/dlls/wined3d/device.c
-index f6bf07604c7..a79241f28cc 100644
+index ae52fda9422..f0a2c62b251 100644
 --- a/dlls/wined3d/device.c
 +++ b/dlls/wined3d/device.c
 @@ -841,16 +841,27 @@ static void destroy_default_samplers(struct wined3d_device *device, struct wined
@@ -171,7 +171,7 @@ index f6bf07604c7..a79241f28cc 100644
  
  /* Context activation is done by the caller. */
 diff --git a/dlls/wined3d/query.c b/dlls/wined3d/query.c
-index f3ca1630e58..5ea79b6e4a7 100644
+index bf1ece51ac4..1eb35306b9a 100644
 --- a/dlls/wined3d/query.c
 +++ b/dlls/wined3d/query.c
 @@ -88,7 +88,7 @@ static BOOL wined3d_fence_supported(const struct wined3d_gl_info *gl_info)
@@ -184,10 +184,10 @@ index f3ca1630e58..5ea79b6e4a7 100644
  {
      const struct wined3d_gl_info *gl_info;
 diff --git a/dlls/wined3d/wined3d_private.h b/dlls/wined3d/wined3d_private.h
-index 34f3fb540df..1335c122890 100644
+index b90848629ea..04817c6a9c8 100644
 --- a/dlls/wined3d/wined3d_private.h
 +++ b/dlls/wined3d/wined3d_private.h
-@@ -1727,9 +1727,6 @@ void wined3d_fence_destroy(struct wined3d_fence *fence) DECLSPEC_HIDDEN;
+@@ -1711,9 +1711,6 @@ void wined3d_fence_destroy(struct wined3d_fence *fence) DECLSPEC_HIDDEN;
  void wined3d_fence_issue(struct wined3d_fence *fence, const struct wined3d_device *device) DECLSPEC_HIDDEN;
  enum wined3d_fence_result wined3d_fence_wait(const struct wined3d_fence *fence,
          const struct wined3d_device *device) DECLSPEC_HIDDEN;
@@ -197,7 +197,7 @@ index 34f3fb540df..1335c122890 100644
  
  /* Direct3D terminology with little modifications. We do not have an issued
   * state because only the driver knows about it, but we have a created state
-@@ -2968,7 +2965,8 @@ struct wined3d_device
+@@ -3000,7 +2997,8 @@ struct wined3d_device
      BYTE inScene : 1;                   /* A flag to check for proper BeginScene / EndScene call pairs */
      BYTE softwareVertexProcessing : 1;  /* process vertex shaders using software or hardware */
      BYTE filter_messages : 1;
@@ -208,5 +208,5 @@ index 34f3fb540df..1335c122890 100644
      unsigned char           surface_alignment; /* Line Alignment of surfaces                      */
  
 -- 
-2.17.0
+2.18.0
 

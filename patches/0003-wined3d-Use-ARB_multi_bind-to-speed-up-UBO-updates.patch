@@ -1,4 +1,4 @@
-From 0b9f86381d6cb80e95dcce5374b22574ce395ca0 Mon Sep 17 00:00:00 2001
+From ddd357e1931faed40b9ae75c337e58ea8bda193a Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Mon, 5 Mar 2018 20:28:34 -0800
 Subject: [PATCH 3/9] wined3d: Use ARB_multi_bind to speed up UBO updates.
@@ -7,16 +7,16 @@ More frequent UBO remaps as a result of the persistent buffer allocator
 causes glBindBufferRange to be a bottleneck. Using ARB_multi_bind
 massively reduces state change overhead.
 ---
- dlls/wined3d/directx.c    |  4 ++++
+ dlls/wined3d/adapter_gl.c |  4 ++++
  dlls/wined3d/state.c      | 46 +++++++++++++++++++++++++++++++++------
  dlls/wined3d/wined3d_gl.h |  1 +
  3 files changed, 44 insertions(+), 7 deletions(-)
 
-diff --git a/dlls/wined3d/directx.c b/dlls/wined3d/directx.c
-index eabdb658b48..2831baa1d7e 100644
---- a/dlls/wined3d/directx.c
-+++ b/dlls/wined3d/directx.c
-@@ -149,6 +149,7 @@ static const struct wined3d_extension_map gl_extension_map[] =
+diff --git a/dlls/wined3d/adapter_gl.c b/dlls/wined3d/adapter_gl.c
+index b932ae9e3fc..c627c8a94e6 100644
+--- a/dlls/wined3d/adapter_gl.c
++++ b/dlls/wined3d/adapter_gl.c
+@@ -96,6 +96,7 @@ static const struct wined3d_extension_map gl_extension_map[] =
      {"GL_ARB_internalformat_query2",        ARB_INTERNALFORMAT_QUERY2     },
      {"GL_ARB_map_buffer_alignment",         ARB_MAP_BUFFER_ALIGNMENT      },
      {"GL_ARB_map_buffer_range",             ARB_MAP_BUFFER_RANGE          },
@@ -24,7 +24,7 @@ index eabdb658b48..2831baa1d7e 100644
      {"GL_ARB_multisample",                  ARB_MULTISAMPLE               },
      {"GL_ARB_multitexture",                 ARB_MULTITEXTURE              },
      {"GL_ARB_occlusion_query",              ARB_OCCLUSION_QUERY           },
-@@ -2795,6 +2796,8 @@ static void load_gl_funcs(struct wined3d_gl_info *gl_info)
+@@ -2157,6 +2158,8 @@ static void load_gl_funcs(struct wined3d_gl_info *gl_info)
      /* GL_ARB_map_buffer_range */
      USE_GL_FUNC(glFlushMappedBufferRange)
      USE_GL_FUNC(glMapBufferRange)
@@ -33,7 +33,7 @@ index eabdb658b48..2831baa1d7e 100644
      /* GL_ARB_multisample */
      USE_GL_FUNC(glSampleCoverageARB)
      /* GL_ARB_multitexture */
-@@ -3954,6 +3957,7 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter,
+@@ -3328,6 +3331,7 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter,
          {ARB_TEXTURE_VIEW,                 MAKEDWORD_VERSION(4, 3)},
  
          {ARB_CLEAR_TEXTURE,                MAKEDWORD_VERSION(4, 4)},
@@ -42,10 +42,10 @@ index eabdb658b48..2831baa1d7e 100644
          {ARB_CLIP_CONTROL,                 MAKEDWORD_VERSION(4, 5)},
          {ARB_CULL_DISTANCE,                MAKEDWORD_VERSION(4, 5)},
 diff --git a/dlls/wined3d/state.c b/dlls/wined3d/state.c
-index 6564f7cc180..c66ec71647e 100644
+index 07d8d69083f..e993d9fa1dc 100644
 --- a/dlls/wined3d/state.c
 +++ b/dlls/wined3d/state.c
-@@ -4428,19 +4428,51 @@ static void state_cb(struct wined3d_context *context, const struct wined3d_state
+@@ -4421,19 +4421,51 @@ static void state_cb(struct wined3d_context *context, const struct wined3d_state
          shader_type = WINED3D_SHADER_TYPE_COMPUTE;
  
      wined3d_gl_limits_get_uniform_block_range(&gl_info->limits, shader_type, &base, &count);
@@ -105,7 +105,7 @@ index 6564f7cc180..c66ec71647e 100644
  }
  
 diff --git a/dlls/wined3d/wined3d_gl.h b/dlls/wined3d/wined3d_gl.h
-index 730eff131f3..4ece45c26f0 100644
+index 21f842c9933..02524f03d69 100644
 --- a/dlls/wined3d/wined3d_gl.h
 +++ b/dlls/wined3d/wined3d_gl.h
 @@ -82,6 +82,7 @@ enum wined3d_gl_extension
@@ -117,5 +117,5 @@ index 730eff131f3..4ece45c26f0 100644
      ARB_MULTITEXTURE,
      ARB_OCCLUSION_QUERY,
 -- 
-2.17.0
+2.18.0
 

@@ -1,4 +1,4 @@
-From f47b2a6c8b6f1cea62cb26965fe662e919547913 Mon Sep 17 00:00:00 2001
+From 002ba597d5afd1455cae2234ec6f5d7a507e48a4 Mon Sep 17 00:00:00 2001
 From: Andrew Comminos <andrew@comminos.com>
 Date: Thu, 8 Mar 2018 23:01:50 -0800
 Subject: [PATCH 7/9] wined3d: Avoid freeing persistent buffer heap elements
@@ -15,7 +15,7 @@ for long.
  5 files changed, 61 insertions(+), 60 deletions(-)
 
 diff --git a/dlls/wined3d/buffer.c b/dlls/wined3d/buffer.c
-index 825a796db1b..533befd2fcb 100644
+index edc4fb8e8e1..d710abe57be 100644
 --- a/dlls/wined3d/buffer.c
 +++ b/dlls/wined3d/buffer.c
 @@ -276,7 +276,7 @@ static BOOL buffer_alloc_persistent_map(struct wined3d_buffer *buffer)
@@ -235,10 +235,10 @@ index 75f84b00882..80670c515f7 100644
      struct wined3d_buffer_heap_bin *bin = &heap->pending_fenced_bins.bins[bin_index];
  
 diff --git a/dlls/wined3d/context.c b/dlls/wined3d/context.c
-index 698ba6fc8f2..a08f93ac53f 100644
+index a47ed2862ea..fea59cf37ad 100644
 --- a/dlls/wined3d/context.c
 +++ b/dlls/wined3d/context.c
-@@ -4970,9 +4970,9 @@ void draw_primitive(struct wined3d_device *device, const struct wined3d_state *s
+@@ -4979,9 +4979,9 @@ void draw_primitive(struct wined3d_device *device, const struct wined3d_state *s
      if (parameters->indexed)
      {
          struct wined3d_buffer *index_buffer = state->index_buffer;
@@ -251,7 +251,7 @@ index 698ba6fc8f2..a08f93ac53f 100644
          else if (!index_buffer->buffer_object || !stream_info->all_vbo)
          {
 diff --git a/dlls/wined3d/cs.c b/dlls/wined3d/cs.c
-index a11d21d1961..6814a8d1022 100644
+index 76f9648d857..0fd56590df7 100644
 --- a/dlls/wined3d/cs.c
 +++ b/dlls/wined3d/cs.c
 @@ -444,7 +444,7 @@ struct wined3d_cs_discard_buffer
@@ -263,7 +263,7 @@ index a11d21d1961..6814a8d1022 100644
  };
  
  struct wined3d_cs_stop
-@@ -2495,14 +2495,14 @@ static void wined3d_cs_exec_discard_buffer(struct wined3d_cs *cs, const void *da
+@@ -2553,14 +2553,14 @@ static void wined3d_cs_exec_discard_buffer(struct wined3d_cs *cs, const void *da
      wined3d_resource_release(&op->buffer->resource);
  }
  
@@ -281,10 +281,10 @@ index a11d21d1961..6814a8d1022 100644
      wined3d_resource_acquire(&buffer->resource);
  
 diff --git a/dlls/wined3d/wined3d_private.h b/dlls/wined3d/wined3d_private.h
-index 4918293b82b..34f3fb540df 100644
+index bc8ba6e708a..b90848629ea 100644
 --- a/dlls/wined3d/wined3d_private.h
 +++ b/dlls/wined3d/wined3d_private.h
-@@ -3540,6 +3540,18 @@ struct wined3d_map_range
+@@ -3575,6 +3575,18 @@ struct wined3d_map_range
      GLsizeiptr size;
  };
  
@@ -303,7 +303,7 @@ index 4918293b82b..34f3fb540df 100644
  enum wined3d_cs_queue_id
  {
      WINED3D_CS_QUEUE_DEFAULT = 0,
-@@ -3684,7 +3696,7 @@ void wined3d_cs_emit_unload_resource(struct wined3d_cs *cs, struct wined3d_resou
+@@ -3719,7 +3731,7 @@ void wined3d_cs_emit_unload_resource(struct wined3d_cs *cs, struct wined3d_resou
  void wined3d_cs_emit_update_sub_resource(struct wined3d_cs *cs, struct wined3d_resource *resource,
          unsigned int sub_resource_idx, const struct wined3d_box *box, const void *data, unsigned int row_pitch,
          unsigned int slice_pitch) DECLSPEC_HIDDEN;
@@ -312,7 +312,7 @@ index 4918293b82b..34f3fb540df 100644
  void wined3d_cs_init_object(struct wined3d_cs *cs,
          void (*callback)(void *object), void *object) DECLSPEC_HIDDEN;
  HRESULT wined3d_cs_map(struct wined3d_cs *cs, struct wined3d_resource *resource, unsigned int sub_resource_idx,
-@@ -3718,7 +3730,6 @@ enum wined3d_buffer_conversion_type
+@@ -3753,7 +3765,6 @@ enum wined3d_buffer_conversion_type
      CONV_POSITIONT,
  };
  
@@ -320,7 +320,7 @@ index 4918293b82b..34f3fb540df 100644
  struct wined3d_buffer_heap_fenced_element;
  
  // Number of power-of-two buckets to populate.
-@@ -3757,11 +3768,11 @@ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr s
+@@ -3792,11 +3803,11 @@ HRESULT wined3d_buffer_heap_create(struct wined3d_context *context, GLsizeiptr s
  HRESULT wined3d_buffer_heap_destroy(struct wined3d_buffer_heap *heap, struct wined3d_context *context) DECLSPEC_HIDDEN;
  // Fetches a buffer from the heap of at least the given size.
  // Attempts to coalesce blocks under memory pressure.
@@ -335,7 +335,7 @@ index 4918293b82b..34f3fb540df 100644
  // Issues a fence for the current set of pending fenced buffers.
  // Double-buffered: if the last fence issued has not yet been triggered, waits
  // on it.
-@@ -3800,8 +3811,8 @@ struct wined3d_buffer
+@@ -3835,8 +3846,8 @@ struct wined3d_buffer
  
      /* persistent mapped buffer */
      struct wined3d_buffer_heap *buffer_heap;
@@ -347,5 +347,5 @@ index 4918293b82b..34f3fb540df 100644
  
  static inline struct wined3d_buffer *buffer_from_resource(struct wined3d_resource *resource)
 -- 
-2.17.0
+2.18.0
 
